@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,30 +30,30 @@ import java.util.Locale;
 
 public class GoStringLiteralEscaperTest extends GoCodeInsightFixtureTestCase {
   private static String decodeRange(@NotNull GoStringLiteral expr, @NotNull TextRange range) {
-    final StringBuilder builder = new StringBuilder();
+    StringBuilder builder = new StringBuilder();
     expr.createLiteralTextEscaper().decode(range, builder);
     return builder.toString();
   }
 
   public void testEscaperDecodeString() {
-    final GoStringLiteral expr = createStringFromText("\\nfoo");
+    GoStringLiteral expr = createStringFromText("\\nfoo");
     assertNotNull(expr);
     assertEquals("fo", decodeRange(expr, TextRange.create(3, 5)));
     assertEquals("\n", decodeRange(expr, TextRange.create(1, 3)));
   }
 
   public void testEscaperDecodeRawString() {
-    final GoStringLiteral expr = createRawStringFromText("\nfoo");
+    GoStringLiteral expr = createRawStringFromText("\nfoo");
     assertNotNull(expr);
     assertEquals("fo", decodeRange(expr, TextRange.create(2, 4)));
     assertEquals("\n", decodeRange(expr, TextRange.create(1, 2)));
   }
 
   public void testEscaperOffsetInStringHost() {
-    final GoStringLiteral expr = createStringFromText("\\nfoo");
+    GoStringLiteral expr = createStringFromText("\\nfoo");
     assertNotNull(expr);
-    final LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
-    final TextRange newLineFoo = TextRange.create(1, 6);
+    LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
+    TextRange newLineFoo = TextRange.create(1, 6);
     escaper.decode(newLineFoo, new StringBuilder());
     assertEquals(1, escaper.getOffsetInHost(0, newLineFoo));
     assertEquals(3, escaper.getOffsetInHost(1, newLineFoo));
@@ -64,10 +64,10 @@ public class GoStringLiteralEscaperTest extends GoCodeInsightFixtureTestCase {
   }
 
   public void testEscaperOffsetInRawStringHost() {
-    final GoStringLiteral expr = createRawStringFromText("\nfoo");
+    GoStringLiteral expr = createRawStringFromText("\nfoo");
     assertNotNull(expr);
-    final LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
-    final TextRange newLineFoo = TextRange.create(1, 5);
+    LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
+    TextRange newLineFoo = TextRange.create(1, 5);
     escaper.decode(newLineFoo, new StringBuilder());
     assertEquals(1, escaper.getOffsetInHost(0, newLineFoo));
     assertEquals(2, escaper.getOffsetInHost(1, newLineFoo));
@@ -78,10 +78,10 @@ public class GoStringLiteralEscaperTest extends GoCodeInsightFixtureTestCase {
   }
 
   public void testEscaperOffsetInStringHostSubString() {
-    final GoStringLiteral expr = createStringFromText("\\nfoo");
+    GoStringLiteral expr = createStringFromText("\\nfoo");
     assertNotNull(expr);
-    final LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
-    final TextRange fooOnly = TextRange.create(3, 6);
+    LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
+    TextRange fooOnly = TextRange.create(3, 6);
     escaper.decode(fooOnly, new StringBuilder());
     assertEquals(3, escaper.getOffsetInHost(0, fooOnly));
     assertEquals(4, escaper.getOffsetInHost(1, fooOnly));
@@ -91,10 +91,10 @@ public class GoStringLiteralEscaperTest extends GoCodeInsightFixtureTestCase {
   }
 
   public void testEscaperOffsetInRawStringHostSubString() {
-    final GoStringLiteral expr = createRawStringFromText("\nfoo");
+    GoStringLiteral expr = createRawStringFromText("\nfoo");
     assertNotNull(expr);
-    final LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
-    final TextRange fooOnly = TextRange.create(2, 5);
+    LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
+    TextRange fooOnly = TextRange.create(2, 5);
     escaper.decode(fooOnly, new StringBuilder());
     assertEquals(2, escaper.getOffsetInHost(0, fooOnly));
     assertEquals(3, escaper.getOffsetInHost(1, fooOnly));
@@ -112,8 +112,8 @@ public class GoStringLiteralEscaperTest extends GoCodeInsightFixtureTestCase {
   }
 
   private static void doSingleCharTest(@NotNull GoStringLiteral expr) {
-    final LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
-    final TextRange range = TextRange.create(1, 2);
+    LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
+    TextRange range = TextRange.create(1, 2);
     escaper.decode(range, new StringBuilder());
     assertEquals(1, escaper.getOffsetInHost(0, range));
     assertEquals(2, escaper.getOffsetInHost(1, range));
@@ -121,10 +121,10 @@ public class GoStringLiteralEscaperTest extends GoCodeInsightFixtureTestCase {
   }
 
   public void testEscaperOffsetInSingleEscapedCharString() {
-    final GoStringLiteral expr = createStringFromText("\\n");
+    GoStringLiteral expr = createStringFromText("\\n");
     assertNotNull(expr);
-    final LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
-    final TextRange range = TextRange.create(1, 3);
+    LiteralTextEscaper<? extends PsiLanguageInjectionHost> escaper = expr.createLiteralTextEscaper();
+    TextRange range = TextRange.create(1, 3);
     escaper.decode(range, new StringBuilder());
     assertEquals(1, escaper.getOffsetInHost(0, range));
     assertEquals(3, escaper.getOffsetInHost(1, range));
@@ -134,78 +134,73 @@ public class GoStringLiteralEscaperTest extends GoCodeInsightFixtureTestCase {
   // region decode tests
 
   public void testDecodeEscapedString() {
-    final GoStringLiteral expr = createStringFromText("\\t\\n\\b");
+    GoStringLiteral expr = createStringFromText("\\t\\n\\b");
     assertNotNull(expr);
     String a = decodeRange(expr, TextRange.create(1, 7));
     assertEquals("\t\n\b", a);
   }
 
   public void testDecodeEscapedVerticalTabString() {
-    final GoStringLiteral expr = createStringFromText("\\v");
+    GoStringLiteral expr = createStringFromText("\\v");
     assertNotNull(expr);
     String a = decodeRange(expr, TextRange.create(1, 3));
     assertEquals("\013", a);
   }
 
   public void testDecodeEscapedBellString() {
-    final GoStringLiteral expr = createStringFromText("\\a");
+    GoStringLiteral expr = createStringFromText("\\a");
     assertNotNull(expr);
     String a = decodeRange(expr, TextRange.create(1, 3));
     assertEquals("\007", a);
   }
 
   public void testDecodeOctalCharString() {
-    final GoStringLiteral expr = createStringFromText("\\011");
+    GoStringLiteral expr = createStringFromText("\\011");
     assertNotNull(expr);
     String a = decodeRange(expr, TextRange.create(1, 5));
     assertEquals("\t", a);
   }
 
   public void testDecodeHexCharString() {
-    final GoStringLiteral expr = createStringFromText("\\x41");
+    GoStringLiteral expr = createStringFromText("\\x41");
     assertNotNull(expr);
     String a = decodeRange(expr, TextRange.create(1, 5));
     assertEquals("A", a);
   }
 
   public void testDecodeShortUnicodeCharString() {
-    final GoStringLiteral expr = createStringFromText("\\u8a9e");
+    GoStringLiteral expr = createStringFromText("\\u8a9e");
     assertNotNull(expr);
     String a = decodeRange(expr, TextRange.create(1, 7));
     assertEquals("語", a);
   }
 
   public void testDecodeLongUnicodeCharString() {
-    PlatformTestUtil.withEncoding(CharsetToolkit.UTF8, new Runnable() {
-      public void run() {
-        final GoStringLiteral expr = createStringFromText("\\U00008a9e");
-        assertNotNull(expr);
-        String a = decodeRange(expr, TextRange.create(1, 11));
-        assertEquals("語", a);
-      }
+    PlatformTestUtil.withEncoding(CharsetToolkit.UTF8, () -> {
+      GoStringLiteral expr = createStringFromText("\\U00008a9e");
+      assertNotNull(expr);
+      String a = decodeRange(expr, TextRange.create(1, 11));
+      assertEquals("語", a);
     });
   }
 
   public void testQuote() {
-    PlatformTestUtil.withEncoding(CharsetToolkit.UTF8, new Runnable() {
-      @Override
-      public void run() {
-        final GoStringLiteral expr = createStringFromText("import \\\"fmt\\\"");
-        assertNotNull(expr);
-        assertEquals("\"fmt\"", decodeRange(expr, TextRange.create(8, 15)));
-      }
+    PlatformTestUtil.withEncoding(CharsetToolkit.UTF8, () -> {
+      GoStringLiteral expr = createStringFromText("import \\\"fmt\\\"");
+      assertNotNull(expr);
+      assertEquals("\"fmt\"", decodeRange(expr, TextRange.create(8, 15)));
     });
   }
 
   // endregion
 
   @NotNull
-  private GoStringLiteral createStringFromText(@NotNull final String text) {
+  private GoStringLiteral createStringFromText(@NotNull String text) {
     return GoElementFactory.createStringLiteral(myFixture.getProject(), String.format(Locale.US, "\"%s\"", text));
   }
 
   @NotNull
-  private GoStringLiteral createRawStringFromText(@NotNull final String text) {
+  private GoStringLiteral createRawStringFromText(@NotNull String text) {
     return GoElementFactory.createStringLiteral(myFixture.getProject(), String.format(Locale.US, "`%s`", text));
   }
 }

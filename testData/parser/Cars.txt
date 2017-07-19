@@ -7,7 +7,8 @@ GO_FILE
       PsiElement(import)('import')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"fmt"')
+          STRING_LITERAL
+            PsiElement(string)('"fmt"')
   TYPE_DECLARATION
     PsiElement(type)('type')
     TYPE_SPEC
@@ -61,8 +62,9 @@ GO_FILE
           PsiElement({)('{')
           FIELD_DECLARATION
             ANONYMOUS_FIELD_DEFINITION
-              TYPE_REFERENCE_EXPRESSION
-                PsiElement(identifier)('Car')
+              TYPE
+                TYPE_REFERENCE_EXPRESSION
+                  PsiElement(identifier)('Car')
           PsiElement(})('}')
   METHOD_DECLARATION
     PsiElement(func)('func')
@@ -104,8 +106,9 @@ GO_FILE
           PsiElement({)('{')
           FIELD_DECLARATION
             ANONYMOUS_FIELD_DEFINITION
-              TYPE_REFERENCE_EXPRESSION
-                PsiElement(identifier)('Car')
+              TYPE
+                TYPE_REFERENCE_EXPRESSION
+                  PsiElement(identifier)('Car')
           PsiElement(})('}')
   METHOD_DECLARATION
     PsiElement(func)('func')

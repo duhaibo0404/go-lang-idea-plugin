@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.FileIndexFacade;
 import com.intellij.openapi.roots.ProjectRootManager;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Factory;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -33,7 +32,6 @@ import com.intellij.openapi.vfs.VirtualFileVisitor;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiFile;
 import com.intellij.rt.coverage.data.ProjectData;
-import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -131,8 +129,8 @@ public class GoCoverageAnnotator extends BaseCoverageAnnotator {
 
   @Nullable
   @Override
-  protected Runnable createRenewRequest(@NotNull CoverageSuitesBundle bundle, @NotNull final CoverageDataManager manager) {
-    final GoCoverageProjectData data = new GoCoverageProjectData();
+  protected Runnable createRenewRequest(@NotNull CoverageSuitesBundle bundle, @NotNull CoverageDataManager manager) {
+    GoCoverageProjectData data = new GoCoverageProjectData();
     for (CoverageSuite suite : bundle.getSuites()) {
       ProjectData toMerge = suite.getCoverageData(manager);
       if (toMerge != null) {
@@ -140,15 +138,9 @@ public class GoCoverageAnnotator extends BaseCoverageAnnotator {
       }
     }
 
-    return new Runnable() {
-      public void run() {
-        annotateAllFiles(data, (VirtualFile[])manager.doInReadActionIfProjectOpen(new Computable() {
-          public VirtualFile[] compute() {
-            return ProjectRootManager.getInstance(getProject()).getContentRoots();
-          }
-        }));
-        manager.triggerPresentationUpdate();
-      }
+    return () -> {
+      annotateAllFiles(data, manager.doInReadActionIfProjectOpen(() -> ProjectRootManager.getInstance(getProject()).getContentRoots()));
+      manager.triggerPresentationUpdate();
     };
   }
 
@@ -191,7 +183,7 @@ public class GoCoverageAnnotator extends BaseCoverageAnnotator {
     return total != 0 ? (double)covered / total : 0;
   }
 
-  public void annotateAllFiles(@NotNull final GoCoverageProjectData data,
+  public void annotateAllFiles(@NotNull GoCoverageProjectData data,
                                @Nullable VirtualFile... contentRoots) {
     if (contentRoots != null) {
       for (VirtualFile root : contentRoots) {
@@ -206,16 +198,13 @@ public class GoCoverageAnnotator extends BaseCoverageAnnotator {
             }
             if (!file.isDirectory() && GoCoverageEngine.INSTANCE.coverageProjectViewStatisticsApplicableTo(file)) {
               DirCoverageInfo dirCoverageInfo = getOrCreateDirectoryInfo(file.getParent());
-              final FileCoverageInfo fileCoverageInfo = getOrCreateFileInfo(file);
-              data.processFile(file.getPath(), new Processor<GoCoverageProjectData.RangeData>() {
-                @Override
-                public boolean process(GoCoverageProjectData.RangeData rangeData) {
-                  if (rangeData.hits > 0) {
-                    fileCoverageInfo.coveredLineCount += rangeData.statements;
-                  }
-                  fileCoverageInfo.totalLineCount += rangeData.statements;
-                  return true;
+              FileCoverageInfo fileCoverageInfo = getOrCreateFileInfo(file);
+              data.processFile(file.getPath(), rangeData -> {
+                if (rangeData.hits > 0) {
+                  fileCoverageInfo.coveredLineCount += rangeData.statements;
                 }
+                fileCoverageInfo.totalLineCount += rangeData.statements;
+                return true;
               });
 
               if (fileCoverageInfo.totalLineCount > 0) {

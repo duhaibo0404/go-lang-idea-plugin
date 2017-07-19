@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,13 @@
 package com.goide.inspections;
 
 import com.goide.psi.*;
+import com.goide.psi.impl.GoTypeReference;
+import com.goide.quickfix.GoRenameQuickFix;
 import com.goide.sdk.GoSdkUtil;
 import com.intellij.codeInspection.LocalInspectionToolSession;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ProblemsHolder;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.ElementDescriptionUtil;
 import com.intellij.psi.PsiElement;
@@ -30,60 +33,67 @@ import org.jetbrains.annotations.NotNull;
 public class GoReservedWordUsedAsNameInspection extends GoInspectionBase {
   @NotNull
   @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
+    GoFile builtinFile = GoSdkUtil.findBuiltinFile(session.getFile());
+    if (builtinFile == null) return DUMMY_VISITOR;
+
     return new GoVisitor() {
       @Override
-      public void visitFunctionDeclaration(@NotNull GoFunctionDeclaration o) {
-        check(o, holder);
+      public void visitTypeSpec(@NotNull GoTypeSpec o) {
+        super.visitTypeSpec(o);
+        check(o, builtinFile, holder);
+      }
+
+      @Override
+      public void visitConstDefinition(@NotNull GoConstDefinition o) {
+        super.visitConstDefinition(o);
+        check(o, builtinFile, holder);
+      }
+
+      @Override
+      public void visitFunctionOrMethodDeclaration(@NotNull GoFunctionOrMethodDeclaration o) {
+        super.visitFunctionOrMethodDeclaration(o);
+        check(o, builtinFile, holder);
       }
 
       @Override
       public void visitVarDefinition(@NotNull GoVarDefinition o) {
-        check(o, holder);
+        super.visitVarDefinition(o);
+        check(o, builtinFile, holder);
       }
     };
   }
 
-  private static void check(@NotNull GoFunctionDeclaration function, @NotNull ProblemsHolder holder) {
-    GoFile builtin = GoSdkUtil.findBuiltinFile(function);
-    if (builtin == null) return;
+  private static void check(@NotNull GoNamedElement element, @NotNull GoFile builtinFile, @NotNull ProblemsHolder holder) {
+    String name = element.getName();
+    if (name == null || GoTypeReference.DOC_ONLY_TYPES.contains(name)) return;
 
-    String name = function.getName();
-    if (name == null) return;
-
-    for (GoFunctionDeclaration builtinFunctionDeclaration : builtin.getFunctions()) {
-      if (name.equals(builtinFunctionDeclaration.getName())) {
-        registerProblem(holder, function, builtinFunctionDeclaration, name);
-        break;
+    for (GoTypeSpec builtinTypeDeclaration : builtinFile.getTypes()) {
+      if (name.equals(builtinTypeDeclaration.getName())) {
+        registerProblem(holder, element, builtinTypeDeclaration);
+        return;
       }
     }
-  }
 
-  private static void check(@NotNull GoVarDefinition variable, @NotNull ProblemsHolder holder) {
-    GoFile builtin = GoSdkUtil.findBuiltinFile(variable);
-    if (builtin == null) return;
+    ProgressManager.checkCanceled();
 
-    String name = variable.getName();
-    if (name == null) return;
-
-    for (GoTypeSpec builtinTypeDeclaration : builtin.getTypes()) {
-      if (name.equals(builtinTypeDeclaration.getName())) {
-        registerProblem(holder, variable, builtinTypeDeclaration, name);
-        break;
+    for (GoFunctionDeclaration builtinFunctionsDeclaration : builtinFile.getFunctions()) {
+      if (name.equals(builtinFunctionsDeclaration.getName())) {
+        registerProblem(holder, element, builtinFunctionsDeclaration);
+        return;
       }
     }
   }
 
   private static void registerProblem(@NotNull ProblemsHolder holder,
                                       @NotNull GoNamedElement element,
-                                      @NotNull GoNamedElement builtinElement,
-                                      @NotNull String name) {
+                                      @NotNull GoNamedElement builtinElement) {
     PsiElement identifier = element.getIdentifier();
-    if (identifier != null) {
-      String elementDescription = ElementDescriptionUtil.getElementDescription(element, UsageViewTypeLocation.INSTANCE);
-      String builtinElementDescription = ElementDescriptionUtil.getElementDescription(builtinElement, UsageViewTypeLocation.INSTANCE);
-      String message = StringUtil.capitalize(elementDescription) + " '" + name + "' collides with builtin " + builtinElementDescription;
-      holder.registerProblem(identifier, message, ProblemHighlightType.GENERIC_ERROR_OR_WARNING, new GoRenameQuickFix(element));
-    }
+    if (identifier == null) return;
+
+    String elementDescription = ElementDescriptionUtil.getElementDescription(element, UsageViewTypeLocation.INSTANCE);
+    String builtinElementDescription = ElementDescriptionUtil.getElementDescription(builtinElement, UsageViewTypeLocation.INSTANCE);
+    String message = StringUtil.capitalize(elementDescription) + " <code>#ref</code> collides with builtin " + builtinElementDescription;
+    holder.registerProblem(identifier, message, ProblemHighlightType.GENERIC_ERROR_OR_WARNING, new GoRenameQuickFix(element));
   }
 }

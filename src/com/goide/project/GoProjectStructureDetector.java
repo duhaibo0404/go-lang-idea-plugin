@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import com.intellij.ide.util.importProject.ProjectDescriptor;
 import com.intellij.ide.util.projectWizard.ModuleWizardStep;
 import com.intellij.ide.util.projectWizard.ProjectJdkForModuleStep;
 import com.intellij.ide.util.projectWizard.importSources.DetectedProjectRoot;
-import com.intellij.ide.util.projectWizard.importSources.DetectedSourceRoot;
 import com.intellij.ide.util.projectWizard.importSources.ProjectFromSourcesBuilder;
 import com.intellij.ide.util.projectWizard.importSources.ProjectStructureDetector;
 import com.intellij.openapi.util.io.FileUtil;
@@ -33,11 +32,11 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class GoProjectStructureDetector extends ProjectStructureDetector {
   @NotNull
@@ -65,21 +64,20 @@ public class GoProjectStructureDetector extends ProjectStructureDetector {
                                     @NotNull ProjectDescriptor projectDescriptor,
                                     @NotNull ProjectFromSourcesBuilder builder) {
     if (!roots.isEmpty() && !builder.hasRootsFromOtherDetectors(this)) {
-      List<ModuleDescriptor> modules = projectDescriptor.getModules();
-      if (modules.isEmpty()) {
-        modules = new ArrayList<ModuleDescriptor>();
-        for (DetectedProjectRoot root : roots) {
-          modules.add(new ModuleDescriptor(root.getDirectory(), GoModuleType.getInstance(), ContainerUtil.<DetectedSourceRoot>emptyList()));
-        }
-        projectDescriptor.setModules(modules);
+      if (projectDescriptor.getModules().isEmpty()) {
+        projectDescriptor.setModules(roots.stream()
+                                       .map(root -> new ModuleDescriptor(root.getDirectory(), GoModuleType.getInstance(),
+                                                                         ContainerUtil.emptyList())).collect(Collectors.toList()));
       }
     }
   }
 
   @NotNull
   @Override
-  public List<ModuleWizardStep> createWizardSteps(@NotNull ProjectFromSourcesBuilder builder, ProjectDescriptor projectDescriptor, Icon stepIcon) {
+  public List<ModuleWizardStep> createWizardSteps(@NotNull ProjectFromSourcesBuilder builder,
+                                                  ProjectDescriptor projectDescriptor,
+                                                  Icon stepIcon) {
     ProjectJdkForModuleStep projectJdkForModuleStep = new ProjectJdkForModuleStep(builder.getContext(), GoSdkType.getInstance());
-    return Collections.<ModuleWizardStep>singletonList(projectJdkForModuleStep);
+    return Collections.singletonList(projectJdkForModuleStep);
   }
 }

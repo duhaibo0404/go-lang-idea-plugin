@@ -2,11 +2,10 @@ package main
 
 import "fmt"
 
-func append1(slice []Type, elems ...Type) []Type
-func make1(Type, size int) Type
+func append1([]Type, ...Type) []Type
 type Type int
-type int int
-type string string
+type <warning descr="Type 'int' collides with builtin type">int</warning> int
+type <warning descr="Type 'string' collides with builtin type">string</warning> string
 
 func println1(o... interface {}) {
     fmt.Println(o)
@@ -60,7 +59,7 @@ func main() {
     for _, <error descr="Unused variable 'd'">d</error> := range <error descr="Unresolved reference 'd'">d</error>.Packets {
     }
 }
-func create() []*Person {return make1([]*Person, 0)}
+func create() []*Person {return make([]*Person, 0)}
 
 type myStruct struct {
     MyVal bool
@@ -74,8 +73,33 @@ func chanFn(c myChanType) {
     }
 }
 
-func <warning>main2</warning>() {
+func _() {
     ch := make(myChanType)
     go chanFn(ch)
     ch <- myStruct{true}
+}
+
+
+type sampleType struct {
+    a int
+}
+
+type a_ b_
+type b_ sampleChan
+type sampleChan chan sampleType
+
+func sample() a_ {
+	return make(chan sampleType, 3)
+}
+
+func _() {
+	c := sample()
+	c <- sampleType{1}
+	c <- sampleType{2}
+	c <- sampleType{3}
+	close(c)
+
+	for t := range (((c))) {
+		println(t.a)
+	}
 }

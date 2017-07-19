@@ -867,12 +867,12 @@ GO_FILE
           BUILTIN_CALL_EXPR
             REFERENCE_EXPRESSION
               PsiElement(identifier)('new')
-            PsiElement(()('(')
-            BUILTIN_ARGS
+            BUILTIN_ARGUMENT_LIST
+              PsiElement(()('(')
               TYPE
                 TYPE_REFERENCE_EXPRESSION
                   PsiElement(identifier)('test')
-            PsiElement())(')')
+              PsiElement())(')')
       SIMPLE_STATEMENT
         SHORT_VAR_DECLARATION
           VAR_DEFINITION
@@ -895,10 +895,11 @@ GO_FILE
     PsiElement(func)('func')
     RECEIVER
       PsiElement(()('(')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('ctx')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('ctx')
       PsiElement())(')')
     PsiElement(identifier)('Errorf')
     SIGNATURE
@@ -1346,10 +1347,9 @@ GO_FILE
             LITERAL
               PsiElement(int)('10')
           PsiElement(;)(';')
-          SIMPLE_STATEMENT
-            LEFT_HAND_EXPR_LIST
-              REFERENCE_EXPRESSION
-                PsiElement(identifier)('a')
+          INC_DEC_STATEMENT
+            REFERENCE_EXPRESSION
+              PsiElement(identifier)('a')
             PsiElement(++)('++')
         BLOCK
           PsiElement({)('{')
@@ -1449,23 +1449,23 @@ GO_FILE
           PsiElement(})('}')
       FOR_STATEMENT
         PsiElement(for)('for')
-      PsiErrorElement:'!', '&', '(', '*', '+', '-', ';', <-, <NL>, <expression>, '[', '^', chan, func, identifier, interface, map, struct, '{' or '}' expected, got 'b'
-        <empty list>
-      SIMPLE_STATEMENT
-        SHORT_VAR_DECLARATION
+        RANGE_CLAUSE
           VAR_DEFINITION
             PsiElement(identifier)('b')
           PsiElement(,)(',')
           VAR_DEFINITION
             PsiElement(identifier)('i')
           PsiElement(:=)(':=')
-          COMPOSITE_LIT
-            TYPE_REFERENCE_EXPRESSION
-              PsiElement(identifier)('M')
-            LITERAL_VALUE
-              PsiElement({)('{')
-              PsiElement(})('}')
-          PsiElement(,)(',')
+          PsiErrorElement:',', '=' or range expected, got 'M'
+            <empty list>
+          REFERENCE_EXPRESSION
+            PsiElement(identifier)('M')
+        BLOCK
+          PsiElement({)('{')
+          PsiElement(})('}')
+      PsiElement(,)(',')
+      SIMPLE_STATEMENT
+        LEFT_HAND_EXPR_LIST
           LITERAL
             PsiElement(int)('10')
       PsiElement(;)(';')
@@ -1478,10 +1478,9 @@ GO_FILE
             LITERAL
               PsiElement(int)('10')
       PsiElement(;)(';')
-      SIMPLE_STATEMENT
-        LEFT_HAND_EXPR_LIST
-          REFERENCE_EXPRESSION
-            PsiElement(identifier)('i')
+      INC_DEC_STATEMENT
+        REFERENCE_EXPRESSION
+          PsiElement(identifier)('i')
         PsiElement(++)('++')
       PsiErrorElement:';', <NL> or '}' expected, got '{'
         <empty list>
@@ -1534,10 +1533,9 @@ GO_FILE
             LITERAL
               PsiElement(int)('10')
           PsiElement(;)(';')
-          SIMPLE_STATEMENT
-            LEFT_HAND_EXPR_LIST
-              REFERENCE_EXPRESSION
-                PsiElement(identifier)('i')
+          INC_DEC_STATEMENT
+            REFERENCE_EXPRESSION
+              PsiElement(identifier)('i')
             PsiElement(++)('++')
         BLOCK
           PsiElement({)('{')
@@ -1571,7 +1569,8 @@ GO_FILE
               TYPE_REFERENCE_EXPRESSION
                 PsiElement(identifier)('string')
             TAG
-              PsiElement(raw_string)('`xml:""`')
+              STRING_LITERAL
+                PsiElement(raw_string)('`xml:""`')
           PsiElement(})('}')
   FUNCTION_DECLARATION
     PsiElement(func)('func')
@@ -1767,12 +1766,12 @@ GO_FILE
           BUILTIN_CALL_EXPR
             REFERENCE_EXPRESSION
               PsiElement(identifier)('new')
-            PsiElement(()('(')
-            BUILTIN_ARGS
+            BUILTIN_ARGUMENT_LIST
+              PsiElement(()('(')
               TYPE
                 TYPE_REFERENCE_EXPRESSION
                   PsiElement(identifier)('SensorFactory')
-            PsiElement())(')')
+              PsiElement())(')')
       ASSIGNMENT_STATEMENT
         LEFT_HAND_EXPR_LIST
           REFERENCE_EXPRESSION
@@ -1785,8 +1784,8 @@ GO_FILE
         BUILTIN_CALL_EXPR
           REFERENCE_EXPRESSION
             PsiElement(identifier)('make')
-          PsiElement(()('(')
-          BUILTIN_ARGS
+          BUILTIN_ARGUMENT_LIST
+            PsiElement(()('(')
             MAP_TYPE
               PsiElement(map)('map')
               PsiElement([)('[')
@@ -1797,7 +1796,7 @@ GO_FILE
               TYPE
                 TYPE_REFERENCE_EXPRESSION
                   PsiElement(identifier)('string')
-          PsiElement())(')')
+            PsiElement())(')')
       RETURN_STATEMENT
         PsiElement(return)('return')
         REFERENCE_EXPRESSION

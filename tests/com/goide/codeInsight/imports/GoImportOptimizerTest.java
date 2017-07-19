@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,83 +16,81 @@
 
 package com.goide.codeInsight.imports;
 
-import com.goide.GoCodeInsightFixtureTestCase;
-import com.goide.project.GoModuleLibrariesService;
+import com.goide.SdkAware;
+import com.goide.inspections.GoUnusedImportInspection;
+import com.goide.quickfix.GoQuickFixTestBase;
 import com.intellij.codeInsight.actions.OptimizeImportsAction;
 import com.intellij.ide.DataManager;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.command.WriteCommandAction;
-import com.intellij.openapi.util.ThrowableComputable;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.testFramework.LightProjectDescriptor;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiRecursiveElementVisitor;
+import com.intellij.psi.PsiReference;
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl;
 import org.jetbrains.annotations.NotNull;
 
-public class GoImportOptimizerTest extends GoCodeInsightFixtureTestCase {
-  public void testUnusedImports() { doTest(); }
-  public void testUnusedImportsWithSemicolon() { doTest(); }
-  public void testUnusedImplicitImports() { doTest(); }
-  public void testUsedImplicitImports() { doTest(); }
-  public void testUsedDuplicatedImports() { doTest(); } 
-  public void testDuplicatedImportsWithSameStringAndDifferentQuotes() { doTest(); } 
-  public void testDuplicatedImportsWithSameString() { doTest(); } 
-  public void testDuplicatedImportsWithDifferentString() { doTest(); } 
-  public void testUnusedDuplicatedImports() { doTest(); }
-  public void testImportWithSameIdentifier() { doTest(); }
-  public void testImportPackageWithMainFiles() { doTest(); }
-  public void testImportDirectoryWithoutPackages() {
-    doTest(); 
-  }
-  public void testUnusedImportsWithBacktick() {
-    doTest(); 
-  }
-  public void testDoNotOptimizeSideEffectImports() {
-    doTest(); 
-  }
-  public void testImportWithMultiplePackages() throws Throwable {
-    VirtualFile file = WriteCommandAction.runWriteCommandAction(myFixture.getProject(), new ThrowableComputable<VirtualFile, Throwable>() {
-      @NotNull
-      @Override
-      public VirtualFile compute() throws Throwable {
-        VirtualFile pack = myFixture.getTempDirFixture().findOrCreateDir("pack");
-        myFixture.getTempDirFixture().createFile("pack/pack_test.go", "package pack_test; func Test() {}");
-        myFixture.getTempDirFixture().createFile("pack/pack.go", "package pack;");
-        return pack;
-      }
-    });
-    GoModuleLibrariesService.getInstance(myFixture.getModule()).setLibraryRootUrls(file.getParent().getUrl());
-    doTest(); 
+@SdkAware
+public class GoImportOptimizerTest extends GoQuickFixTestBase {
+  public void testUnusedImports()                                        { doTest(); }
+  public void testUnusedImportsWithSemicolon()                           { doTest(); }
+  public void testUnusedImplicitImports()                                { doTest(); }
+  public void testUsedImplicitImports()                                  { doTest(); }
+  public void testUsedDuplicatedImports()                                { doTest(); }
+  public void testDuplicatedImportsWithSameStringAndDifferentQuotes()    { doTest(); }
+  public void testDuplicatedImportsWithSameString()                      { doTest(); }
+  public void testDuplicatedImportsWithDifferentString()                 { doTest(); }
+  public void testUnusedDuplicatedImports()                              { doTest(); }
+  public void testImportPackageWithMainFiles()                           { doTest(); }
+  public void testImportDirectoryWithoutPackages()                       { doTest(); } 
+  public void testUnusedImportsWithBacktick()                            { doTest(); } 
+  public void testDoNotOptimizeSideEffectImports()                       { doTest(); } 
+  public void testRedundantImportQualifier()                             { doTest(); } 
+
+  public void testUnusedImportsQuickFix() { 
+    myFixture.configureByFile(getTestName(true) + ".go");
+    myFixture.checkHighlighting();
+    applySingleQuickFix("Optimize imports");
+    myFixture.checkResultByFile(getTestName(true) + "_after.go");
   }
 
-  @Override
-  protected boolean isWriteActionRequired() {
-    return false;
+  public void testImportWithSameIdentifier() {
+    myFixture.addFileToProject("foo/bar/buzz.go", "package bar; func Hello() {}");
+    doTest();
+  }
+
+  public void testImportWithMultiplePackages() {
+    myFixture.addFileToProject("pack/pack_test.go", "package pack_test; func Test() {}");
+    myFixture.addFileToProject("pack/pack.go", "package pack;");
+    doTest();
   }
 
   private void doTest() {
-    myFixture.configureByFile(getTestName(true) + ".go");
-    myFixture.doHighlighting();
-    ApplicationManager.getApplication().runWriteAction(new Runnable() {
-      @Override
-      public void run() {
-        OptimizeImportsAction.actionPerformedImpl(DataManager.getInstance().getDataContext(myFixture.getEditor().getContentComponent()));
-      }
-    });
+    PsiFile file = myFixture.configureByFile(getTestName(true) + ".go");
+    resolveAllReferences(file);
+    myFixture.checkHighlighting();
+    ApplicationManager.getApplication().runWriteAction(
+      () -> OptimizeImportsAction.actionPerformedImpl(DataManager.getInstance().getDataContext(myFixture.getEditor().getContentComponent())));
     myFixture.checkResultByFile(getTestName(true) + "_after.go");
   }
-  
+
+  public static void resolveAllReferences(PsiFile file) {
+    file.accept(new PsiRecursiveElementVisitor() {
+      @Override
+      public void visitElement(@NotNull PsiElement o) {
+        for (PsiReference reference : o.getReferences()) {
+          reference.resolve();
+        }
+        super.visitElement(o);
+      }
+    });
+  }
+
   @Override
   public void setUp() throws Exception {
     super.setUp();
     ((CodeInsightTestFixtureImpl)myFixture).canChangeDocumentDuringHighlighting(true);
-    setUpProjectSdk();
+    myFixture.enableInspections(GoUnusedImportInspection.class);
   }
-
-  @Override
-  protected LightProjectDescriptor getProjectDescriptor() {
-      return createMockProjectDescriptor();
-    }
-  
 
   @NotNull
   @Override

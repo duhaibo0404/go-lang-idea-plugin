@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,28 +70,26 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
   public boolean canRun(@NotNull String executorId, @NotNull RunProfile profile) {
     if (profile instanceof GoApplicationConfiguration) {
       return DefaultRunExecutor.EXECUTOR_ID.equals(executorId)
-             || DefaultDebugExecutor.EXECUTOR_ID.equals(executorId) && !DlvDebugProcess.isDlvDisabled;
+             || DefaultDebugExecutor.EXECUTOR_ID.equals(executorId) && !DlvDebugProcess.IS_DLV_DISABLED;
     }
     return false;
   }
 
   @NotNull
   @Override
-  protected Promise<RunProfileStarter> prepare(@NotNull ExecutionEnvironment environment, @NotNull final RunProfileState state)
+  protected Promise<RunProfileStarter> prepare(@NotNull ExecutionEnvironment environment, @NotNull RunProfileState state)
     throws ExecutionException {
-    final File outputFile = getOutputFile(environment, (GoApplicationRunningState)state);
+    File outputFile = getOutputFile(environment, (GoApplicationRunningState)state);
     FileDocumentManager.getInstance().saveAllDocuments();
 
-    final AsyncPromise<RunProfileStarter> buildingPromise = new AsyncPromise<RunProfileStarter>();
-    final GoHistoryProcessListener historyProcessListener = new GoHistoryProcessListener();
+    AsyncPromise<RunProfileStarter> buildingPromise = new AsyncPromise<>();
+    GoHistoryProcessListener historyProcessListener = new GoHistoryProcessListener();
     ((GoApplicationRunningState)state).createCommonExecutor()
       .withParameters("build")
       .withParameterString(((GoApplicationRunningState)state).getGoBuildParams())
       .withParameters("-o", outputFile.getAbsolutePath())
       .withParameters(((GoApplicationRunningState)state).isDebug() ? new String[]{"-gcflags", "-N -l"} : ArrayUtil.EMPTY_STRING_ARRAY)
       .withParameters(((GoApplicationRunningState)state).getTarget())
-      .showNotifications(true)
-      .showOutputOnError()
       .disablePty()
       .withPresentableName("go build")
       .withProcessListener(historyProcessListener)
@@ -100,18 +98,13 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
         @Override
         public void processTerminated(ProcessEvent event) {
           super.processTerminated(event);
-          if (event.getExitCode() == 0) {
-            if (((GoApplicationRunningState)state).isDebug()) {
-              buildingPromise.setResult(new MyDebugStarter(outputFile.getAbsolutePath(), historyProcessListener));
+          boolean compilationFailed = event.getExitCode() != 0;
+          if (((GoApplicationRunningState)state).isDebug()) {
+              buildingPromise.setResult(new MyDebugStarter(outputFile.getAbsolutePath(), historyProcessListener, compilationFailed));
             }
             else {
-              buildingPromise.setResult(new MyRunStarter(outputFile.getAbsolutePath(), historyProcessListener));
+              buildingPromise.setResult(new MyRunStarter(outputFile.getAbsolutePath(), historyProcessListener, compilationFailed));
             }
-          }
-          else {
-            buildingPromise.setResult(null);
-            buildingPromise.setError(new ExecutionException(event.getText()));
-          }
         }
       }).executeWithProgress(false);
     return buildingPromise;
@@ -120,7 +113,7 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
   @NotNull
   private static File getOutputFile(@NotNull ExecutionEnvironment environment, @NotNull GoApplicationRunningState state)
     throws ExecutionException {
-    final File outputFile;
+    File outputFile;
     String outputDirectoryPath = state.getConfiguration().getOutputFilePath();
     RunnerAndConfigurationSettings settings = environment.getRunnerAndConfigurationSettings();
     String configurationName = settings != null ? settings.getName() : "application";
@@ -168,11 +161,15 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
   private class MyDebugStarter extends RunProfileStarter {
     private final String myOutputFilePath;
     private final GoHistoryProcessListener myHistoryProcessListener;
+    private final boolean myCompilationFailed;
 
 
-    private MyDebugStarter(@NotNull String outputFilePath, @NotNull GoHistoryProcessListener historyProcessListener) {
+    private MyDebugStarter(@NotNull String outputFilePath,
+                           @NotNull GoHistoryProcessListener historyProcessListener,
+                           boolean compilationFailed) {
       myOutputFilePath = outputFilePath;
       myHistoryProcessListener = historyProcessListener;
+      myCompilationFailed = compilationFailed;
     }
 
     @Nullable
@@ -180,14 +177,15 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
     public RunContentDescriptor execute(@NotNull RunProfileState state, @NotNull ExecutionEnvironment env)
       throws ExecutionException {
       if (state instanceof GoApplicationRunningState) {
-        final int port = findFreePort();
+        int port = findFreePort();
         FileDocumentManager.getInstance().saveAllDocuments();
         ((GoApplicationRunningState)state).setHistoryProcessHandler(myHistoryProcessListener);
         ((GoApplicationRunningState)state).setOutputFilePath(myOutputFilePath);
         ((GoApplicationRunningState)state).setDebugPort(port);
+        ((GoApplicationRunningState)state).setCompilationFailed(myCompilationFailed);
 
         // start debugger
-        final ExecutionResult executionResult = state.execute(env.getExecutor(), GoBuildingRunner.this);
+        ExecutionResult executionResult = state.execute(env.getExecutor(), GoBuildingRunner.this);
         if (executionResult == null) {
           throw new ExecutionException("Cannot run debugger");
         }
@@ -212,11 +210,15 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
   private class MyRunStarter extends RunProfileStarter {
     private final String myOutputFilePath;
     private final GoHistoryProcessListener myHistoryProcessListener;
+    private final boolean myCompilationFailed;
 
 
-    private MyRunStarter(@NotNull String outputFilePath, @NotNull GoHistoryProcessListener historyProcessListener) {
+    private MyRunStarter(@NotNull String outputFilePath,
+                         @NotNull GoHistoryProcessListener historyProcessListener,
+                         boolean compilationFailed) {
       myOutputFilePath = outputFilePath;
       myHistoryProcessListener = historyProcessListener;
+      myCompilationFailed = compilationFailed;
     }
 
     @Nullable
@@ -227,6 +229,7 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
         FileDocumentManager.getInstance().saveAllDocuments();
         ((GoApplicationRunningState)state).setHistoryProcessHandler(myHistoryProcessListener);
         ((GoApplicationRunningState)state).setOutputFilePath(myOutputFilePath);
+        ((GoApplicationRunningState)state).setCompilationFailed(myCompilationFailed);
         ExecutionResult executionResult = state.execute(env.getExecutor(), GoBuildingRunner.this);
         return executionResult != null ? new RunContentBuilder(executionResult, env).showRunContent(env.getContentToReuse()) : null;
       }
@@ -235,23 +238,11 @@ public class GoBuildingRunner extends AsyncGenericProgramRunner {
   }
 
   private static int findFreePort() {
-    ServerSocket socket = null;
-    try {
-      //noinspection SocketOpenedButNotSafelyClosed
-      socket = new ServerSocket(0);
+    try(ServerSocket socket = new ServerSocket(0)) {
       socket.setReuseAddress(true);
       return socket.getLocalPort();
     }
     catch (Exception ignore) {
-    }
-    finally {
-      if (socket != null) {
-        try {
-          socket.close();
-        }
-        catch (Exception ignore) {
-        }
-      }
     }
     throw new IllegalStateException("Could not find a free TCP/IP port to start dlv");
   }

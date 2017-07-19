@@ -13,31 +13,40 @@ GO_FILE
       PsiElement(()('(')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"bytes"')
+          STRING_LITERAL
+            PsiElement(string)('"bytes"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"errors"')
+          STRING_LITERAL
+            PsiElement(string)('"errors"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"fmt"')
+          STRING_LITERAL
+            PsiElement(string)('"fmt"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"io"')
+          STRING_LITERAL
+            PsiElement(string)('"io"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"os"')
+          STRING_LITERAL
+            PsiElement(string)('"os"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"path"')
+          STRING_LITERAL
+            PsiElement(string)('"path"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"strconv"')
+          STRING_LITERAL
+            PsiElement(string)('"strconv"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"strings"')
+          STRING_LITERAL
+            PsiElement(string)('"strings"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"time"')
+          STRING_LITERAL
+            PsiElement(string)('"time"')
       PsiElement())(')')
   VAR_DECLARATION
     PsiElement(var)('var')
@@ -208,10 +217,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('Flush')
     SIGNATURE
@@ -434,10 +444,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('cString')
     SIGNATURE
@@ -580,10 +591,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('octal')
     SIGNATURE
@@ -690,10 +702,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('numeric')
     SIGNATURE
@@ -829,10 +842,9 @@ GO_FILE
               LITERAL
                 PsiElement(int)('0')
           PsiElement(;)(';')
-          SIMPLE_STATEMENT
-            LEFT_HAND_EXPR_LIST
-              REFERENCE_EXPRESSION
-                PsiElement(identifier)('i')
+          INC_DEC_STATEMENT
+            REFERENCE_EXPRESSION
+              PsiElement(identifier)('i')
             PsiElement(--)('--')
         BLOCK
           PsiElement({)('{')
@@ -943,10 +955,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('WriteHeader')
     SIGNATURE
@@ -1267,8 +1280,8 @@ GO_FILE
           BUILTIN_CALL_EXPR
             REFERENCE_EXPRESSION
               PsiElement(identifier)('make')
-            PsiElement(()('(')
-            BUILTIN_ARGS
+            BUILTIN_ARGUMENT_LIST
+              PsiElement(()('(')
               ARRAY_OR_SLICE_TYPE
                 PsiElement([)('[')
                 PsiElement(])(']')
@@ -1278,7 +1291,7 @@ GO_FILE
               PsiElement(,)(',')
               REFERENCE_EXPRESSION
                 PsiElement(identifier)('blockSize')
-            PsiElement())(')')
+              PsiElement())(')')
       SIMPLE_STATEMENT
         SHORT_VAR_DECLARATION
           VAR_DEFINITION
@@ -2002,10 +2015,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('splitUSTARLongName')
     SIGNATURE
@@ -2105,10 +2119,9 @@ GO_FILE
                     PsiElement(char)(''/'')
             BLOCK
               PsiElement({)('{')
-              SIMPLE_STATEMENT
-                LEFT_HAND_EXPR_LIST
-                  REFERENCE_EXPRESSION
-                    PsiElement(identifier)('length')
+              INC_DEC_STATEMENT
+                REFERENCE_EXPRESSION
+                  PsiElement(identifier)('length')
                 PsiElement(--)('--')
               PsiElement(})('}')
       SIMPLE_STATEMENT
@@ -2230,10 +2243,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('writePAXHeader')
     SIGNATURE
@@ -2263,12 +2277,12 @@ GO_FILE
           BUILTIN_CALL_EXPR
             REFERENCE_EXPRESSION
               PsiElement(identifier)('new')
-            PsiElement(()('(')
-            BUILTIN_ARGS
+            BUILTIN_ARGUMENT_LIST
+              PsiElement(()('(')
               TYPE
                 TYPE_REFERENCE_EXPRESSION
                   PsiElement(identifier)('Header')
-            PsiElement())(')')
+              PsiElement())(')')
       ASSIGNMENT_STATEMENT
         LEFT_HAND_EXPR_LIST
           REFERENCE_EXPRESSION
@@ -2801,10 +2815,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('Write')
     SIGNATURE
@@ -3012,10 +3027,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('tw')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('Writer')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('Writer')
       PsiElement())(')')
     PsiElement(identifier)('Close')
     SIGNATURE
@@ -3122,10 +3138,9 @@ GO_FILE
             LITERAL
               PsiElement(int)('2')
           PsiElement(;)(';')
-          SIMPLE_STATEMENT
-            LEFT_HAND_EXPR_LIST
-              REFERENCE_EXPRESSION
-                PsiElement(identifier)('i')
+          INC_DEC_STATEMENT
+            REFERENCE_EXPRESSION
+              PsiElement(identifier)('i')
             PsiElement(++)('++')
         BLOCK
           PsiElement({)('{')

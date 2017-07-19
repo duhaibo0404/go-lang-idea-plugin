@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import java.io.IOException;
 
 public class GoFileElementType extends IStubFileElementType<GoFileStub> {
   public static final IStubFileElementType INSTANCE = new GoFileElementType();
-  public static final int VERSION = 13;
+  public static final int VERSION = 21;
 
   private GoFileElementType() {
     super("GO_FILE", GoLanguage.INSTANCE);
@@ -68,14 +68,13 @@ public class GoFileElementType extends IStubFileElementType<GoFileStub> {
 
   @Override
   public void serialize(@NotNull GoFileStub stub, @NotNull StubOutputStream dataStream) throws IOException {
-    dataStream.writeName(stub.getPackageName());
     dataStream.writeUTF(StringUtil.notNullize(stub.getBuildFlags()));
   }
 
   @NotNull
   @Override
   public GoFileStub deserialize(@NotNull StubInputStream dataStream, StubElement parentStub) throws IOException {
-    return new GoFileStub(null, dataStream.readName(), StringRef.fromNullableString(StringUtil.nullize(dataStream.readUTF())));
+    return new GoFileStub(null, StringRef.fromNullableString(StringUtil.nullize(dataStream.readUTF())));
   }
 
   @NotNull

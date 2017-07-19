@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.testIntegration.TestFinder;
-import com.intellij.util.SmartList;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,13 +42,18 @@ public class GoTestFinder implements TestFinder {
     return file instanceof GoFile && file.getName().endsWith(GoConstants.TEST_SUFFIX_WITH_EXTENSION);
   }
 
-  public static boolean isTestFile(@Nullable VirtualFile file) {
-    return file != null && file.getFileType() == GoFileType.INSTANCE && file.getNameWithoutExtension().endsWith(GoConstants.TEST_SUFFIX);
+  public static boolean isTestFile(@NotNull VirtualFile file) {
+    return file.getName().endsWith(GoConstants.TEST_SUFFIX_WITH_EXTENSION);
   }
 
-  @Nullable
-  public static String getTestFunctionName(@NotNull GoFunctionOrMethodDeclaration function) {
-    return GoTestFunctionType.fromName(function.getName()) == GoTestFunctionType.TEST ? StringUtil.notNullize(function.getName()) : null;
+  public static boolean isTestOrExampleFunction(@NotNull GoFunctionOrMethodDeclaration function) {
+    GoTestFunctionType type = GoTestFunctionType.fromName(function.getName());
+    return type == GoTestFunctionType.EXAMPLE || type == GoTestFunctionType.TEST;
+  }
+
+  public static boolean isBenchmarkFunction(@NotNull GoFunctionOrMethodDeclaration function) {
+    GoTestFunctionType type = GoTestFunctionType.fromName(function.getName());
+    return type == GoTestFunctionType.BENCHMARK;
   }
 
   public static boolean isTestFileWithTestPackage(@Nullable PsiFile file) {
@@ -80,7 +85,7 @@ public class GoTestFinder implements TestFinder {
       PsiDirectory directory = file.getContainingDirectory();
       PsiFile testFile = directory.findFile(FileUtil.getNameWithoutExtension(file.getName()) + GoConstants.TEST_SUFFIX_WITH_EXTENSION);
       if (testFile != null) {
-        return new SmartList<PsiElement>(testFile);
+        return ContainerUtil.newSmartList(testFile);
       }
     }
     return Collections.emptyList();
@@ -94,7 +99,7 @@ public class GoTestFinder implements TestFinder {
       PsiDirectory directory = testFile.getContainingDirectory();
       PsiFile sourceFile = directory.findFile(StringUtil.trimEnd(testFile.getName(), GoConstants.TEST_SUFFIX_WITH_EXTENSION) + EXTENSION);
       if (sourceFile != null) {
-        return new SmartList<PsiElement>(sourceFile);
+        return ContainerUtil.newSmartList(sourceFile);
       }
     }
     return Collections.emptyList();

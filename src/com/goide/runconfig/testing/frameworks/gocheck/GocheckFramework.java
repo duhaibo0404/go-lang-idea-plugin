@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,10 @@
 package com.goide.runconfig.testing.frameworks.gocheck;
 
 import com.goide.psi.GoFile;
+import com.goide.psi.GoFunctionOrMethodDeclaration;
 import com.goide.psi.GoMethodDeclaration;
 import com.goide.psi.impl.GoPsiImplUtil;
-import com.goide.runconfig.testing.GoTestFinder;
-import com.goide.runconfig.testing.GoTestFramework;
-import com.goide.runconfig.testing.GoTestRunConfiguration;
-import com.goide.runconfig.testing.GoTestRunningState;
+import com.goide.runconfig.testing.*;
 import com.goide.stubs.index.GoPackagesIndex;
 import com.goide.util.GoUtil;
 import com.intellij.execution.runners.ExecutionEnvironment;
@@ -47,9 +45,9 @@ public class GocheckFramework extends GoTestFramework {
 
   @Nullable
   public static String getGocheckTestName(@NotNull GoMethodDeclaration method) {
-    String methodName = GoTestFinder.getTestFunctionName(method);
+    String methodName = GoTestFunctionType.fromName(method.getName()) == GoTestFunctionType.TEST ? method.getName() : null;
     if (methodName != null) {
-      String suiteName = GoPsiImplUtil.getText(method.getReceiver().getType());
+      String suiteName = GoPsiImplUtil.getText(method.getReceiverType());
       if (!suiteName.isEmpty()) {
         return suiteName + "." + methodName;
       }
@@ -66,13 +64,9 @@ public class GocheckFramework extends GoTestFramework {
   @Override
   public boolean isAvailable(@Nullable Module module) {
     if (module == null) return false;
-    for (GoFile file : StubIndex.getElements(GoPackagesIndex.KEY, "check", module.getProject(), GoUtil.moduleScope(module), GoFile.class)) {
-      String importPath = file.getImportPath();
-      if (isGoCheckImportPath(importPath)) {
-        return true;
-      }
-    }
-    return false;
+    return !StubIndex.getInstance().processElements(GoPackagesIndex.KEY, "check", module.getProject(),
+                                                    GoUtil.goPathResolveScope(module, null), GoFile.class,
+                                                    file -> !isGoCheckImportPath(file.getImportPath(true)));
   }
 
   private static boolean isGoCheckImportPath(String importPath) {
@@ -81,7 +75,7 @@ public class GocheckFramework extends GoTestFramework {
   }
 
   @Override
-  public boolean isAvailableOnFile(@NotNull PsiFile file) {
+  public boolean isAvailableOnFile(@Nullable PsiFile file) {
     if (!GoTestFinder.isTestFile(file)) {
       return false;
     }
@@ -91,6 +85,11 @@ public class GocheckFramework extends GoTestFramework {
       }
     }
     return false;
+  }
+
+  @Override
+  public boolean isAvailableOnFunction(@Nullable GoFunctionOrMethodDeclaration functionOrMethodDeclaration) {
+    return functionOrMethodDeclaration instanceof GoMethodDeclaration && GoTestFinder.isTestOrExampleFunction(functionOrMethodDeclaration);
   }
 
   @NotNull

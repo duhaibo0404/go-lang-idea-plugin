@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ package com.goide.runconfig.testing.ui;
 
 import com.goide.runconfig.GoRunUtil;
 import com.goide.runconfig.testing.GoTestRunConfiguration;
+import com.goide.runconfig.testing.frameworks.gobench.GobenchFramework;
 import com.goide.runconfig.testing.frameworks.gocheck.GocheckFramework;
 import com.goide.runconfig.testing.frameworks.gotest.GotestFramework;
 import com.goide.runconfig.ui.GoCommonSettingsPanel;
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
@@ -29,14 +29,12 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.EditorTextField;
 import com.intellij.ui.ListCellRendererWrapper;
-import com.intellij.util.Producer;
 import org.intellij.lang.regexp.RegExpLanguage;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.util.Locale;
 
 public class GoTestRunConfigurationEditorForm extends SettingsEditor<GoTestRunConfiguration> {
   @NotNull private final Project myProject;
@@ -54,6 +52,7 @@ public class GoTestRunConfigurationEditorForm extends SettingsEditor<GoTestRunCo
   private GoCommonSettingsPanel myCommonSettingsPanel;
   private JRadioButton myGotestFrameworkRadioButton;
   private JRadioButton myGocheckFrameworkRadioButton;
+  private JRadioButton myGobenchRadioButton;
 
   public GoTestRunConfigurationEditorForm(@NotNull Project project) {
     super(null);
@@ -87,6 +86,7 @@ public class GoTestRunConfigurationEditorForm extends SettingsEditor<GoTestRunCo
   protected void resetEditorFrom(@NotNull GoTestRunConfiguration configuration) {
     myGotestFrameworkRadioButton.setSelected(configuration.getTestFramework() == GotestFramework.INSTANCE);
     myGocheckFrameworkRadioButton.setSelected(configuration.getTestFramework() == GocheckFramework.INSTANCE);
+    myGobenchRadioButton.setSelected(configuration.getTestFramework() == GobenchFramework.INSTANCE);
     myTestKindComboBox.setSelectedItem(configuration.getKind());
     myPackageField.setText(configuration.getPackage());
 
@@ -103,7 +103,13 @@ public class GoTestRunConfigurationEditorForm extends SettingsEditor<GoTestRunCo
 
   @Override
   protected void applyEditorTo(@NotNull GoTestRunConfiguration configuration) throws ConfigurationException {
-    configuration.setTestFramework(myGocheckFrameworkRadioButton.isSelected() ? GocheckFramework.INSTANCE : GotestFramework.INSTANCE);
+    if (myGocheckFrameworkRadioButton.isSelected()) {
+      configuration.setTestFramework(GocheckFramework.INSTANCE);
+    } else if (myGobenchRadioButton.isSelected()) {
+      configuration.setTestFramework(GobenchFramework.INSTANCE);
+    } else {
+      configuration.setTestFramework(GotestFramework.INSTANCE);
+    }
     configuration.setKind((GoTestRunConfiguration.Kind)myTestKindComboBox.getSelectedItem());
     configuration.setPackage(myPackageField.getText());
     configuration.setDirectoryPath(myDirectoryField.getText());
@@ -126,26 +132,17 @@ public class GoTestRunConfigurationEditorForm extends SettingsEditor<GoTestRunCo
 
   private void createUIComponents() {
     myPatternEditor = new EditorTextField("", null, RegExpLanguage.INSTANCE.getAssociatedFileType());
-    myPackageField = new GoPackageFieldCompletionProvider(new Producer<Module>() {
-      @Nullable
-      @Override
-      public Module produce() {
-        return myCommonSettingsPanel != null ? myCommonSettingsPanel.getSelectedModule() : null;
-      }
-    }).createEditor(myProject);
+    myPackageField = new GoPackageFieldCompletionProvider(
+      () -> myCommonSettingsPanel != null ? myCommonSettingsPanel.getSelectedModule() : null).createEditor(myProject);
   }
 
-  private String getSelectedFramework() {
-    return myGocheckFrameworkRadioButton.isSelected() ? GocheckFramework.NAME : GotestFramework.NAME;
-  }
-  
   @Nullable
   private static ListCellRendererWrapper<GoTestRunConfiguration.Kind> getTestKindListCellRendererWrapper() {
     return new ListCellRendererWrapper<GoTestRunConfiguration.Kind>() {
       @Override
       public void customize(JList list, @Nullable GoTestRunConfiguration.Kind kind, int index, boolean selected, boolean hasFocus) {
         if (kind != null) {
-          String kindName = StringUtil.capitalize(kind.toString().toLowerCase());
+          String kindName = StringUtil.capitalize(kind.toString().toLowerCase(Locale.US));
           setText(kindName);
         }
       }
@@ -163,11 +160,6 @@ public class GoTestRunConfigurationEditorForm extends SettingsEditor<GoTestRunCo
     for (GoTestRunConfiguration.Kind kind : GoTestRunConfiguration.Kind.values()) {
       myTestKindComboBox.addItem(kind);
     }
-    myTestKindComboBox.addActionListener(new ActionListener() {
-      @Override
-      public void actionPerformed(@NotNull ActionEvent e) {
-        onTestKindChanged();
-      }
-    });
+    myTestKindComboBox.addActionListener(e -> onTestKindChanged());
   }
 }

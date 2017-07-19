@@ -2,6 +2,7 @@
 /google-app-engine/build/
 /google-app-engine/google-app-engine-yaml/build/
 /utils/build/
+/plan9/build/
 
 .gradle
 
@@ -13,6 +14,7 @@
 .idea/shelf/
 .idea/libraries/
 .idea/.name
+.idea/*.png
 *.iml
 
 /testData/performance/docker/

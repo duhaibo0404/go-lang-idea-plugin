@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,11 +29,13 @@ public class GoConstants {
   public static final String PATH = "PATH";
   public static final String GO_PATH = "GOPATH";
   public static final String GO_ROOT = "GOROOT";
+  public static final String GO_VENDORING_EXPERIMENT = "GO15VENDOREXPERIMENT";
   public static final String GO_LIBRARIES_SERVICE_NAME = "GoLibraries";
   public static final String GO_LIBRARIES_CONFIG_FILE = "goLibraries.xml";
-  public static final String GO_BUILD_FLAGS_SERVICE_NAME = "GoBuildFlags";
-  public static final String GO_BUILD_FLAGS_CONFIG_FILE = "goBuildFlags.xml";
+  public static final String GO_MODULE_SESTTINGS_SERVICE_NAME = "Go";
 
+  private static final String IDENTIFIER_REGEX = "[\\p{javaLetter}_][\\p{javaLetterOrDigit}_]*";
+  public static final String TEST_NAME_REGEX = IDENTIFIER_REGEX + "(/\\S*)?";
   public static final String TESTDATA_NAME = "testdata";
   public static final String TEST_SUFFIX = "_test";
   public static final String TEST_SUFFIX_WITH_EXTENSION = "_test.go";
@@ -43,15 +45,20 @@ public class GoConstants {
   public static final String TEST_MAIN = "TestMain";
   public static final String MAIN = "main";
   public static final String INIT = "init";
+  public static final String IOTA = "iota";
   public static final String DOCUMENTATION = "documentation";
   public static final String C_PATH = "C";
   public static final String TESTING_PATH = "testing";
+  public static final String VENDOR = "vendor";
+  public static final String INTERNAL = "internal";
+  public static final String INTERFACE_TYPE = "interface{}";
 
   public static final NotificationGroup GO_NOTIFICATION_GROUP = NotificationGroup.balloonGroup("Go plugin notifications");
   public static final NotificationGroup GO_EXECUTION_NOTIFICATION_GROUP = NotificationGroup.toolWindowGroup("Go Execution", ToolWindowId.RUN);
 
   @NonNls public static final String LIB_EXEC_DIRECTORY = "libexec";
   @NonNls public static final String GO_VERSION_FILE_PATH = "runtime/zversion.go";
+  @NonNls public static final String GO_VERSION_NEW_FILE_PATH = "runtime/internal/sys/zversion.go";
   public static final String BUILTIN_FILE_NAME = "builtin.go";
   public static final String BUILTIN_PACKAGE_NAME = "builtin";
   public static final String BUILTIN_FILE_PATH = BUILTIN_PACKAGE_NAME + "/" + BUILTIN_FILE_NAME;
@@ -77,7 +84,7 @@ public class GoConstants {
                                                                           "ppc64", "ppc64le", "mips", "mipsle", "mips64", "mips64le", 
                                                                           "mips64p32", "mips64p32le", "ppc", "s390", "s390x", "sparc", 
                                                                           "sparc64");
-  public static final Set<String> KNOWN_VERSIONS = ContainerUtil.immutableSet("go1.1", "go1.2", "go1.3", "go1.4");
+  public static final Set<String> KNOWN_VERSIONS = ContainerUtil.immutableSet("go1.1", "go1.2", "go1.3", "go1.4", "go1.5", "go1.6", "go1.7");
   public static final Set<String> KNOWN_CGO = ContainerUtil.immutableSet("darwin/386", "darwin/amd64", "dragonfly/386", "dragonfly/amd64",
                                                                          "freebsd/386", "freebsd/amd64", "freebsd/arm", "linux/386",
                                                                          "linux/amd64", "linux/arm", "linux/arm64", "android/386", 
@@ -89,6 +96,7 @@ public class GoConstants {
   @NonNls public static final String NIL = "nil";
 
   @NonNls public static final String GO = "Go";
+  @NonNls public static final String AMD64 = "amd64";
 
   private GoConstants() {
 

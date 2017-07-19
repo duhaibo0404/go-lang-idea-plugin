@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,37 +36,29 @@ public class GoGetPackageFix extends LocalQuickFixBase implements HighPriorityAc
   @NotNull private final String myPackage;
 
   public GoGetPackageFix(@NotNull String packageName) {
-    super("Go get '" + packageName + "'");
+    super("go get -t " + packageName + "/...", "go get");
     myPackage = packageName;
+  }
+
+  public static void applyFix(@NotNull Project project,
+                              @Nullable Module module,
+                              @NotNull String packageName,
+                              boolean startInBackground) {
+    String sdkPath = GoSdkService.getInstance(project).getSdkHomePath(module);
+    if (StringUtil.isEmpty(sdkPath)) return;
+    CommandProcessor.getInstance().runUndoTransparentAction(() -> {
+      Consumer<Boolean> consumer = aBoolean -> VirtualFileManager.getInstance().asyncRefresh(null);
+      GoExecutor.in(project, module).withPresentableName("go get -t " + packageName + "/...")
+        .withParameters("get", "-t", packageName+"/...").showNotifications(false, true).showOutputOnError()
+        .executeWithProgress(!startInBackground, consumer);
+    });
   }
 
   @Override
   public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
     PsiElement element = descriptor.getPsiElement();
-    Module module = ModuleUtilCore.findModuleForPsiElement(element);
-    if (module == null) return;
-    applyFix(project, module, myPackage, true);
-  }
-
-  public static void applyFix(@NotNull final Project project,
-                              @Nullable final Module module,
-                              @NotNull final String packageName,
-                              final boolean startInBackground) {
-    String sdkPath = GoSdkService.getInstance(project).getSdkHomePath(module);
-    if (StringUtil.isEmpty(sdkPath)) return;
-    CommandProcessor.getInstance().runUndoTransparentAction(new Runnable() {
-      @Override
-      public void run() {
-        Consumer<Boolean> consumer = new Consumer<Boolean>() {
-          @Override
-          public void consume(Boolean aBoolean) {
-            VirtualFileManager.getInstance().asyncRefresh(null);
-          }
-        };
-        GoExecutor.in(project, module).withPresentableName("go get " + packageName)
-          .withParameters("get", packageName).showNotifications(false).showOutputOnError()
-          .executeWithProgress(!startInBackground, consumer);
-      }
-    });
+    if (element != null) {
+      applyFix(project, ModuleUtilCore.findModuleForPsiElement(element.getContainingFile()), myPackage, true);
+    }
   }
 }

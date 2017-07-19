@@ -21,18 +21,18 @@ func simple(a int) int {
 }
 
 func Foo() {
-    <error>err</error> := 1
+    <error descr="Unused variable 'err'">err</error> := 1
     err = 2
 }
 
 func Foo2() {
-    <error>err</error> := 1
+    <error descr="Unused variable 'err'">err</error> := 1
     err,x := 2,1
     fmt.Println(x)
 }
 
 func _(p interface{}) error {
-	switch <error>p</error> := p.(type) {
+	switch <error descr="Unused variable 'p'">p</error> := p.(type) {
 		case error:
 		return nil
 	}
@@ -43,11 +43,21 @@ type Image interface {
 	At(x, y int)
 }
 
+type Image2 interface {
+}
+
+
 func _() {
 	var p Image
 	switch q := p.(type) {
 	case Image:
 		fmt.Println("draw.Image")
+		switch p.(type) {
+		case Image2:
+			q.At(0,0)
+		}
+	case Image2:
+		q.<error descr="Unresolved reference 'At'">At</error>(0,0)
 	default:
 		fmt.Println("default")
 		q.At(0, 0)
@@ -62,8 +72,8 @@ var (
 
 func TestIdeaTimeApi() {
 	interval1.Nanoseconds()
-	fmt.Println("%T %T", interval1, interval2)
-	fmt.Println("%d %d", interval1.Nanoseconds(), interval2.Nanoseconds())
+	fmt.Printf("%T %T", interval1, interval2)
+	fmt.Printf("%d %d", interval1.Nanoseconds(), interval2.Nanoseconds())
 }
 
 func _() {
@@ -79,6 +89,6 @@ func f(d time.Duration) {
 }
 
 func _() {
-	time := time.Now();
+	<warning descr="Variable 'time' collides with imported package name">time</warning> := time.Now();
 	fmt.Println(time) 
 }

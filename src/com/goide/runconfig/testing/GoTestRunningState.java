@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,10 +28,14 @@ import com.intellij.execution.Executor;
 import com.intellij.execution.filters.TextConsoleBuilder;
 import com.intellij.execution.filters.TextConsoleBuilderFactory;
 import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessTerminatedListener;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ProgramRunner;
+import com.intellij.execution.testframework.AbstractTestProxy;
+import com.intellij.execution.testframework.actions.AbstractRerunFailedTestsAction;
 import com.intellij.execution.testframework.autotest.ToggleAutoTestAction;
 import com.intellij.execution.testframework.sm.SMTestRunnerConnectionUtil;
+import com.intellij.execution.testframework.sm.runner.ui.SMTRunnerConsoleView;
 import com.intellij.execution.ui.ConsoleView;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.util.io.FileUtil;
@@ -40,15 +44,18 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.Collection;
+import java.util.List;
 
 public class GoTestRunningState extends GoRunningState<GoTestRunConfiguration> {
   private String myCoverageFilePath;
+  private String myFailedTestsPattern;
 
   public GoTestRunningState(@NotNull ExecutionEnvironment env, @NotNull Module module, @NotNull GoTestRunConfiguration configuration) {
     super(env, module, configuration);
@@ -62,15 +69,20 @@ public class GoTestRunningState extends GoRunningState<GoTestRunConfiguration> {
     setConsoleBuilder(consoleBuilder);
 
     GoTestConsoleProperties consoleProperties = new GoTestConsoleProperties(myConfiguration, executor);
-    // todo: replace with simple create console
-    ConsoleView consoleView = SMTestRunnerConnectionUtil.createConsoleWithCustomLocator(myConfiguration.getTestFramework().getName(),
-                                                                                        consoleProperties, getEnvironment(),
-                                                                                        new GoTestLocationProvider());
-    consoleView.attachToProcess(processHandler);
+    String frameworkName = myConfiguration.getTestFramework().getName();
+    ConsoleView consoleView = SMTestRunnerConnectionUtil.createAndAttachConsole(frameworkName, processHandler, consoleProperties);
     consoleView.addMessageFilter(new GoConsoleFilter(myConfiguration.getProject(), myModule, myConfiguration.getWorkingDirectoryUrl()));
+    ProcessTerminatedListener.attach(processHandler);
 
     DefaultExecutionResult executionResult = new DefaultExecutionResult(consoleView, processHandler);
-    executionResult.setRestartActions(new ToggleAutoTestAction());
+    AbstractRerunFailedTestsAction rerunFailedTestsAction = consoleProperties.createRerunFailedTestsAction(consoleView);
+    if (rerunFailedTestsAction != null) {
+      rerunFailedTestsAction.setModelProvider(((SMTRunnerConsoleView)consoleView)::getResultsViewer);
+      executionResult.setRestartActions(rerunFailedTestsAction, new ToggleAutoTestAction());
+    }
+    else {
+      executionResult.setRestartActions(new ToggleAutoTestAction());
+    }
     return executionResult;
   }
 
@@ -83,18 +95,21 @@ public class GoTestRunningState extends GoRunningState<GoTestRunConfiguration> {
         String relativePath = FileUtil.getRelativePath(myConfiguration.getWorkingDirectory(),
                                                        myConfiguration.getDirectoryPath(),
                                                        File.separatorChar);
-        if (relativePath != null) {
-          executor.withParameters(relativePath + "/...");
+        // TODO Once Go gets support for covering multiple packages the ternary condition should be reverted
+        // See https://golang.org/issues/6909
+        String pathSuffix = myCoverageFilePath == null ? "..." : ".";
+        if (relativePath != null && !".".equals(relativePath)) {
+          executor.withParameters("./" + relativePath + "/" + pathSuffix);
         }
         else {
-          executor.withParameters("./...");
+          executor.withParameters("./" + pathSuffix);
           executor.withWorkDirectory(myConfiguration.getDirectoryPath());
         }
-        addFilterParameter(executor, myConfiguration.getPattern());
+        addFilterParameter(executor, ObjectUtils.notNull(myFailedTestsPattern, myConfiguration.getPattern()));
         break;
       case PACKAGE:
         executor.withParameters(myConfiguration.getPackage());
-        addFilterParameter(executor, myConfiguration.getPattern());
+        addFilterParameter(executor, ObjectUtils.notNull(myFailedTestsPattern, myConfiguration.getPattern()));
         break;
       case FILE:
         String filePath = myConfiguration.getFilePath();
@@ -107,28 +122,28 @@ public class GoTestRunningState extends GoRunningState<GoTestRunConfiguration> {
           throw new ExecutionException("File '" + filePath + "' is not test file");
         }
 
-        String importPath = ((GoFile)file).getImportPath();
+        String importPath = ((GoFile)file).getImportPath(false);
         if (StringUtil.isEmpty(importPath)) {
           throw new ExecutionException("Cannot find import path for " + filePath);
         }
 
         executor.withParameters(importPath);
-        addFilterParameter(executor, buildFilePattern((GoFile)file));
+        addFilterParameter(executor, myFailedTestsPattern != null ? myFailedTestsPattern : buildFilterPatternForFile((GoFile)file));
         break;
     }
 
     if (myCoverageFilePath != null) {
-      executor.withParameters("-coverprofile=" + myCoverageFilePath, "-covermode=count");
+      executor.withParameters("-coverprofile=" + myCoverageFilePath, "-covermode=atomic");
     }
 
     return executor;
   }
 
   @NotNull
-  protected String buildFilePattern(GoFile file) {
+  protected String buildFilterPatternForFile(GoFile file) {
     Collection<String> testNames = ContainerUtil.newLinkedHashSet();
     for (GoFunctionDeclaration function : file.getFunctions()) {
-      ContainerUtil.addIfNotNull(testNames, GoTestFinder.getTestFunctionName(function));
+      ContainerUtil.addIfNotNull(testNames, GoTestFinder.isTestOrExampleFunction(function) ? function.getName() : null);
     }
     return "^" + StringUtil.join(testNames, "|") + "$";
   }
@@ -141,5 +156,9 @@ public class GoTestRunningState extends GoRunningState<GoTestRunConfiguration> {
 
   public void setCoverageFilePath(@Nullable String coverageFile) {
     myCoverageFilePath = coverageFile;
+  }
+
+  public void setFailedTests(@NotNull List<AbstractTestProxy> failedTests) {
+    myFailedTestsPattern = "^" + StringUtil.join(failedTests, AbstractTestProxy::getName, "|") + "$";
   }
 }

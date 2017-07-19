@@ -44,7 +44,7 @@ public class GocheckRunningState extends GoTestRunningState {
 
   @NotNull
   @Override
-  protected String buildFilePattern(GoFile file) {
+  protected String buildFilterPatternForFile(GoFile file) {
     Collection<String> testNames = ContainerUtil.newLinkedHashSet();
     for (GoMethodDeclaration method : file.getMethods()) {
       ContainerUtil.addIfNotNull(testNames, GocheckFramework.getGocheckTestName(method));

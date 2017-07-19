@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,46 +18,24 @@ package com.goide.inspections;
 
 import com.goide.psi.GoFile;
 import com.goide.psi.GoImportSpec;
+import com.goide.quickfix.GoDeleteImportQuickFix;
 import com.goide.runconfig.testing.GoTestFinder;
-import com.intellij.codeInspection.LocalQuickFixBase;
-import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ProblemsHolder;
-import com.intellij.openapi.command.WriteCommandAction;
-import com.intellij.openapi.project.Project;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiDirectory;
 import org.jetbrains.annotations.NotNull;
 
 public class GoSelfImportInspection extends GoInspectionBase {
   @Override
   protected void checkFile(@NotNull GoFile file, @NotNull ProblemsHolder problemsHolder) {
-    if (GoTestFinder.getTestTargetPackage(file) != null) return;
-
-    String fileImportPath = file.getImportPath();
-    for (GoImportSpec importSpec : file.getImports()) {
-      String path = importSpec.getPath();
-      if (path.equals(fileImportPath) || path.equals(".")) {
-        problemsHolder.registerProblem(importSpec, "Self import is not allowed", new GoSelfImportQuickFix());
-      }
-    }
-  }
-
-  public static class GoSelfImportQuickFix extends LocalQuickFixBase {
-    protected GoSelfImportQuickFix() {
-      super("Remove self import");
-    }
-    @Override
-    public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
-      final PsiElement element = descriptor.getPsiElement();
-      final PsiFile file = element != null ? element.getContainingFile() : null;
-      if (!(element instanceof GoImportSpec && file instanceof GoFile)) return;
-  
-      WriteCommandAction.runWriteCommandAction(project, new Runnable() {
-        @Override
-        public void run() {
-          ((GoFile)file).deleteImport((GoImportSpec)element);
+    if (GoTestFinder.isTestFileWithTestPackage(file)) return;
+    PsiDirectory directory = file.getContainingDirectory();
+    if (directory != null) {
+      for (GoImportSpec importSpec : file.getImports()) {
+        PsiDirectory resolve = importSpec.getImportString().resolve();
+        if (directory.equals(resolve)) {
+          problemsHolder.registerProblem(importSpec, "Self import is not allowed", new GoDeleteImportQuickFix());
         }
-      });
+      }
     }
   }
 }

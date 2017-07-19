@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,16 @@
 
 package com.goide.refactor;
 
+import com.goide.GoCodeInsightFixtureTestCase;
 import com.intellij.refactoring.RefactoringBundle;
 import com.intellij.refactoring.util.CommonRefactoringUtil;
-import com.intellij.testFramework.fixtures.LightPlatformCodeInsightFixtureTestCase;
 import org.jetbrains.annotations.NotNull;
 
-public class GoIntroduceVariableTest extends LightPlatformCodeInsightFixtureTestCase {
+public class GoIntroduceVariableTest extends GoCodeInsightFixtureTestCase {
   @NotNull
   @Override
-  protected String getTestDataPath() {
-    return "testData/refactor/introduce-variable";
+  protected String getBasePath() {
+    return "refactor/introduce-variable";
   }
 
   private void doTest() {
@@ -49,18 +49,34 @@ public class GoIntroduceVariableTest extends LightPlatformCodeInsightFixtureTest
     }
   }
 
-  public void testCaretAfterRightParenthesis()      { doTest(); }
-  public void testCaretOnRightParenthesis()         { doTest(); }
-  public void testCaretOnCallParenthesis()          { doTest(); }
-  public void testNameSuggestOnGetterFunction()     { doTest(); }
-  public void testNameSuggestOnDefinedImportAlias() { doTest(); }
-  public void testNameSuggestOnDefaultName()        { doTest(); }
-  public void testNameSuggestOnParamName()          { doTest(); }
+  public void testCaretAfterRightParenthesis()                      { doTest(); }
+  public void testCaretOnRightParenthesis()                         { doTest(); }
+  public void testCaretOnCallParenthesis()                          { doTest(); }
+  public void testNameSuggestOnGetterFunction()                     { doTest(); }
+  public void testNameSuggestOnDefaultName()                        { doTest(); }
+  public void testNameSuggestOnParamName()                          { doTest(); }
+  public void testNameSuggestOnType()                               { doTest(); }
+  public void testNameSuggestOnArrayType()                          { doTest(); }
+  public void testDoNotSuggestKeywordBasedOnType()                  { doTest(); }
+  public void testDoNotSuggestKeywordBasedOnCallName()              { doTest(); }
+  public void testDoNotSuggestNameEqualsToType()                    { doTest(); }
+  public void testExtractFunctionLiteral()                          { doTest(); }
+  
+  public void testExtractSingleExpressionStatement_1()              { doTest(); }
+  public void testExtractSingleExpressionStatement_2()              { doTest(); }
+  public void testExtractSingleExpressionStatement_3()              { doTest(); }
 
-  public void testMultipleValueResult() { doFailureTest("Expression fmt.Println() returns multiple values."); }
+  public void testCompositeLiteral()                                { doTest(); }
+  public void testIndexedExpression()                               { doTest(); }
+  public void testConversion()                                      { doTest(); }
+
+  public void testVoidExpression()      { doFailureTest("Expression fmt.Println() returns multiple values."); }
+  public void testVoidCallExpression()  { doFailureTest("Expression fmt.Println() returns multiple values."); }
   public void testWrongSelection()      { doFailureTest(RefactoringBundle.message("selected.block.should.represent.an.expression")); }
   public void testTopLevelExpression()  { doFailureTest(RefactoringBundle.message("refactoring.introduce.context.error"));}
 
-  public void testReplaceAll()  { doTest(true); }
-  public void testReplaceOnly() { doTest(false);}
+  public void testReplaceAll()          { doTest(true); }
+  public void testReplaceOnly()         { doTest(false);}
+
+  public void testTwoOccurrences()      { doTest(true);}
 }

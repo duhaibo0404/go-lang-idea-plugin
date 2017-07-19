@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.goide.parser;
 
+import com.goide.GoParserDefinition;
 import com.goide.GoTypes;
 import com.intellij.lang.LighterASTNode;
 import com.intellij.lang.PsiBuilder;
@@ -30,7 +31,6 @@ import com.intellij.psi.tree.IElementType;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.IndexingDataKeys;
 import gnu.trove.TObjectIntHashMap;
-import gnu.trove.TObjectIntProcedure;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,19 +43,22 @@ public class GoParserUtil extends GeneratedParserUtilBase {
   @NotNull
   private static TObjectIntHashMap<String> getParsingModes(@NotNull PsiBuilder builder_) {
     TObjectIntHashMap<String> flags = builder_.getUserDataUnprotected(MODES_KEY);
-    if (flags == null) builder_.putUserDataUnprotected(MODES_KEY, flags = new TObjectIntHashMap<String>());
+    if (flags == null) builder_.putUserDataUnprotected(MODES_KEY, flags = new TObjectIntHashMap<>());
     return flags;
   }
 
   public static boolean consumeBlock(PsiBuilder builder_, @SuppressWarnings("UnusedParameters") int level) {
     PsiFile file = builder_.getUserDataUnprotected(FileContextUtil.CONTAINING_FILE_KEY);
-    if (file == null) return false;
-    VirtualFile data = file.getUserData(IndexingDataKeys.VIRTUAL_FILE);
+    VirtualFile data = file != null ? file.getUserData(IndexingDataKeys.VIRTUAL_FILE) : null;
     if (data == null) return false;
     int i = 0;
     PsiBuilder.Marker m = builder_.mark();
     do {
       IElementType type = builder_.getTokenType();
+      if (type == GoTypes.TYPE_ && nextIdentifier(builder_)) { // don't count a.(type), only type <ident>
+        m.rollbackTo();
+        return false;
+      }
       i += type == GoTypes.LBRACE ? 1 : type == GoTypes.RBRACE ? -1 : 0;  
       builder_.advanceLexer();
     }
@@ -69,7 +72,16 @@ public class GoParserUtil extends GeneratedParserUtilBase {
     }
     return result;  
   }
-  
+
+  private static boolean nextIdentifier(PsiBuilder builder_) {
+    IElementType e;
+    int i = 0;
+    //noinspection StatementWithEmptyBody
+    while ((e = builder_.rawLookup(++i)) == GoParserDefinition.WS || e == GoParserDefinition.NLS) {
+    }
+    return e == GoTypes.IDENTIFIER;
+  }
+
   public static boolean emptyImportList(PsiBuilder builder_, @SuppressWarnings("UnusedParameters") int level) {
     PsiBuilder.Marker marker = getCurrentMarker(builder_ instanceof PsiBuilderAdapter ? ((PsiBuilderAdapter)builder_).getDelegate() : builder_);
     if (marker != null) {
@@ -87,9 +99,9 @@ public class GoParserUtil extends GeneratedParserUtilBase {
   }
 
   public static boolean withOff(PsiBuilder builder_, int level_, Parser parser, String... modes) {
-    final TObjectIntHashMap<String> map = getParsingModes(builder_);
+    TObjectIntHashMap<String> map = getParsingModes(builder_);
 
-    TObjectIntHashMap<String> prev = new TObjectIntHashMap<String>();
+    TObjectIntHashMap<String> prev = new TObjectIntHashMap<>();
     
     for (String mode : modes) {
       int p = map.get(mode);
@@ -101,12 +113,9 @@ public class GoParserUtil extends GeneratedParserUtilBase {
     
     boolean result = parser.parse(builder_, level_);
     
-    prev.forEachEntry(new TObjectIntProcedure<String>() {
-      @Override
-      public boolean execute(String mode, int p) {
-        map.put(mode, p);
-        return true;
-      }
+    prev.forEachEntry((mode, p) -> {
+      map.put(mode, p);
+      return true;
     });
     
     return result;
@@ -126,10 +135,10 @@ public class GoParserUtil extends GeneratedParserUtilBase {
     return getParsingModes(builder_).get(mode) == 0;
   }
 
-  public static boolean prevIsArrayType(@NotNull PsiBuilder builder_, @SuppressWarnings("UnusedParameters") int level) {
+  public static boolean prevIsType(@NotNull PsiBuilder builder_, @SuppressWarnings("UnusedParameters") int level) {
     LighterASTNode marker = builder_.getLatestDoneMarker();
     IElementType type = marker != null ? marker.getTokenType() : null;
-    return type == GoTypes.ARRAY_OR_SLICE_TYPE || type == GoTypes.MAP_TYPE;
+    return type == GoTypes.ARRAY_OR_SLICE_TYPE || type == GoTypes.MAP_TYPE || type == GoTypes.STRUCT_TYPE;
   }
   
   public static boolean keyOrValueExpression(@NotNull PsiBuilder builder_, int level) {
@@ -147,7 +156,7 @@ public class GoParserUtil extends GeneratedParserUtilBase {
     return true;
   }
 
-  public static boolean exitMode(@NotNull PsiBuilder builder_, @SuppressWarnings("UnusedParameters") int level, String mode, boolean safe) {
+  private static boolean exitMode(@NotNull PsiBuilder builder_, @SuppressWarnings("UnusedParameters") int level, String mode, boolean safe) {
     TObjectIntHashMap<String> flags = getParsingModes(builder_);
     int count = flags.get(mode);
     if (count == 1) flags.remove(mode);
@@ -177,12 +186,20 @@ public class GoParserUtil extends GeneratedParserUtilBase {
       for (Field field : builder_.getClass().getDeclaredFields()) {
         if ("MyList".equals(field.getType().getSimpleName())) {
           field.setAccessible(true);
-          List production = (List)field.get(builder_);
-          return (PsiBuilder.Marker)ContainerUtil.getLastItem(production);
+          //noinspection unchecked
+          return ContainerUtil.getLastItem((List<PsiBuilder.Marker>)field.get(builder_));
         }
       }
     }
     catch (Exception ignored) {}
     return null;
+  }
+
+  public static boolean nextTokenIsSmart(PsiBuilder builder, IElementType token) {
+    return nextTokenIsFast(builder, token) || ErrorState.get(builder).completionState != null;
+  }
+
+  public static boolean nextTokenIsSmart(PsiBuilder builder, IElementType... tokens) {
+    return nextTokenIsFast(builder, tokens) || ErrorState.get(builder).completionState != null;
   }
 }

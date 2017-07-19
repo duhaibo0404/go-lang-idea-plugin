@@ -1,13 +1,14 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <component name="ProjectDictionaryState">
   <dictionary name="zolotov">
     <words>
+      <w>autoimport</w>
       <w>backticks</w>
       <w>consts</w>
       <w>covermode</w>
       <w>coverprofile</w>
       <w>devel</w>
       <w>gcloud</w>
+      <w>gobench</w>
       <w>gocheck</w>
       <w>goide</w>
       <w>goimports</w>
@@ -23,6 +24,7 @@
       <w>redeclared</w>
       <w>runconfig</w>
       <w>solaris</w>
+      <w>vendored</w>
       <w>vgap</w>
       <w>vspacer</w>
     </words>

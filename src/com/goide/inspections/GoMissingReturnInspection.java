@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package com.goide.inspections;
 
+import com.goide.highlighting.exitpoint.GoBreakStatementExitPointHandler;
 import com.goide.psi.*;
 import com.goide.psi.impl.GoPsiImplUtil;
 import com.intellij.codeInsight.template.Template;
@@ -38,38 +39,24 @@ import java.util.Collections;
 import java.util.List;
 
 public class GoMissingReturnInspection extends GoInspectionBase {
-  @NotNull
-  @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder,
-                                     @SuppressWarnings({"UnusedParameters", "For future"}) @NotNull LocalInspectionToolSession session) {
-    return new GoVisitor() {
-      @Override
-      public void visitFunctionOrMethodDeclaration(@NotNull GoFunctionOrMethodDeclaration o) { // todo: extract common interface
-        check(o.getSignature(), o.getBlock(), holder);
-      }
-
-      @Override
-      public void visitFunctionLit(@NotNull GoFunctionLit o) {
-        check(o.getSignature(), o.getBlock(), holder);
-      }
-    };
-  }
+  public static final String ADD_RETURN_STATEMENT_QUICK_FIX_NAME = "Add return statement";
 
   private static void check(@Nullable GoSignature signature, @Nullable GoBlock block, @NotNull ProblemsHolder holder) {
     if (block == null) return;
     GoResult result = signature != null ? signature.getResult() : null;
-    if (result == null || isTerminating(block)) return;
+    if (result == null || result.isVoid() || isTerminating(block)) return;
 
     PsiElement brace = block.getRbrace();
     holder.registerProblem(brace == null ? block : brace, "Missing return at end of function",
                            brace == null ? new LocalQuickFix[]{} : new LocalQuickFix[]{new AddReturnFix(block)});
   }
 
+  // https://tip.golang.org/ref/spec#Terminating_statements
   private static boolean isTerminating(@Nullable GoCompositeElement s) {
-    if (s instanceof GoReturnStatement || s instanceof GoGoStatement) {
+    if (s instanceof GoReturnStatement || s instanceof GoGotoStatement) {
       return true;
     }
-    else if (s instanceof GoSimpleStatement) {
+    if (s instanceof GoSimpleStatement) {
       GoLeftHandExprList list = ((GoSimpleStatement)s).getLeftHandExprList();
       GoExpression expression = ContainerUtil.getFirstItem(list != null ? list.getExpressionList() : null);
       if (expression instanceof GoCallExpr && GoPsiImplUtil.isPanic((GoCallExpr)expression)) return true;
@@ -80,8 +67,7 @@ public class GoMissingReturnInspection extends GoInspectionBase {
     else if (s instanceof GoIfStatement) {
       GoBlock block = ((GoIfStatement)s).getBlock();
       GoStatement st = ((GoIfStatement)s).getElseStatement();
-      if (block != null && isTerminating(block) && st != null && isTerminating(st)) return true;
-      return false;
+      return block != null && isTerminating(block) && st != null && isTerminating(st);
     }
     else if (s instanceof GoElseStatement) {
       GoIfStatement ifStatement = ((GoElseStatement)s).getIfStatement();
@@ -93,44 +79,22 @@ public class GoMissingReturnInspection extends GoInspectionBase {
     else if (s instanceof GoForStatement) {
       GoForStatement f = (GoForStatement)s;
       GoForClause forClause = f.getForClause();
-      if (forClause != null && forClause.getExpression() == null) return true;
-      if (f.getExpression() == null && forClause == null && f.getRangeClause() == null) return true;
-      return isTerminating(f.getBlock());
+      if (forClause != null && forClause.getExpression() != null || f.getExpression() != null || f.getRangeClause() != null) return false;
+      GoBlock block = f.getBlock();
+      return block == null || !hasReferringBreakStatement(f);
     }
     else if (s instanceof GoExprSwitchStatement) {
-      boolean hasDefault = false;
-      List<GoExprCaseClause> list = ((GoExprSwitchStatement)s).getExprCaseClauseList();
-      for (GoExprCaseClause clause : list) {
-        PsiElement def = clause.getDefault();
-        if (def != null) hasDefault = true;
-        GoStatement last = ContainerUtil.getLastItem(clause.getStatementList());
-        if (last instanceof GoFallthroughStatement) continue;
-        if (last == null || !isTerminating(last)) return false;
-      }
-      return hasDefault;
+      return isTerminating((GoExprSwitchStatement)s, ((GoExprSwitchStatement)s).getExprCaseClauseList());
     }
-    else if (s instanceof GoTypeSwitchStatement) { // todo: almost the same code 
-      boolean hasDefault = false;
-      List<GoTypeCaseClause> list = ((GoTypeSwitchStatement)s).getTypeCaseClauseList();
-      for (GoTypeCaseClause clause : list) {
-        if (clause.getDefault() != null) {
-          hasDefault = true;
-        }
-        GoStatement last = ContainerUtil.getLastItem(clause.getStatementList());
-        if (last == null || !isTerminating(last)) return false;
-      }
-      return hasDefault;
+    else if (s instanceof GoTypeSwitchStatement) {
+      return isTerminating((GoTypeSwitchStatement)s, ((GoTypeSwitchStatement)s).getTypeCaseClauseList());
     }
     else if (s instanceof GoSelectStatement) {
       GoSelectStatement selectStatement = (GoSelectStatement)s;
       for (GoCommClause clause : selectStatement.getCommClauseList()) {
         List<GoStatement> statements = clause.getStatementList();
-        if (statements.size() == 0) {
-          return false;
-        }
-        if (!isTerminating(statements.get(statements.size() - 1))) {
-          return false;
-        }
+        if (hasReferringBreakStatement(selectStatement)) return false;
+        if (!isTerminating(ContainerUtil.getLastItem(statements))) return false;
       }
       return true;
     }
@@ -144,7 +108,51 @@ public class GoMissingReturnInspection extends GoInspectionBase {
     return false;
   }
 
-  public static class AddReturnFix extends LocalQuickFixAndIntentionActionOnPsiElement {
+  private static boolean isTerminating(@NotNull GoSwitchStatement switchStatement, @NotNull List<? extends GoCaseClause> clauses) {
+    boolean hasDefault = false;
+    for (GoCaseClause clause : clauses) {
+      hasDefault |= clause.getDefault() != null;
+      List<GoStatement> statements = clause.getStatementList();
+      if (hasReferringBreakStatement(switchStatement)) return false;
+      GoStatement last = ContainerUtil.getLastItem(statements);
+      if (!(last instanceof GoFallthroughStatement) && !isTerminating(last)) return false;
+    }
+    return hasDefault;
+  }
+
+  private static boolean hasReferringBreakStatement(@NotNull PsiElement breakStatementOwner) {
+    return !GoPsiImplUtil.goTraverser().withRoot(breakStatementOwner).traverse().filter(GoBreakStatement.class).filter(statement -> {
+      PsiElement owner = GoBreakStatementExitPointHandler.getBreakStatementOwnerOrResolve(statement);
+      if (breakStatementOwner.equals(owner)) {
+        return true;
+      }
+      if (owner instanceof GoLabelDefinition) {
+        PsiElement parent = owner.getParent();
+        if (parent instanceof GoLabeledStatement && breakStatementOwner.equals(((GoLabeledStatement)parent).getStatement())) {
+          return true;
+        }
+      }
+      return false;
+    }).isEmpty();
+  }
+
+  @NotNull
+  @Override
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
+    return new GoVisitor() {
+      @Override
+      public void visitFunctionOrMethodDeclaration(@NotNull GoFunctionOrMethodDeclaration o) { // todo: extract common interface
+        check(o.getSignature(), o.getBlock(), holder);
+      }
+
+      @Override
+      public void visitFunctionLit(@NotNull GoFunctionLit o) {
+        check(o.getSignature(), o.getBlock(), holder);
+      }
+    };
+  }
+
+  private static class AddReturnFix extends LocalQuickFixAndIntentionActionOnPsiElement {
     public AddReturnFix(@NotNull GoBlock block) {
       super(block);
     }
@@ -152,20 +160,20 @@ public class GoMissingReturnInspection extends GoInspectionBase {
     @NotNull
     @Override
     public String getText() {
-      return "Add return statement";
+      return ADD_RETURN_STATEMENT_QUICK_FIX_NAME;
     }
 
     @NotNull
     @Override
     public String getFamilyName() {
-      return "Function declaration";
+      return getName();
     }
 
     @Override
-    public void invoke(@NotNull Project project, 
+    public void invoke(@NotNull Project project,
                        @NotNull PsiFile file,
                        @Nullable("is null when called from inspection") Editor editor,
-                       @NotNull PsiElement startElement, 
+                       @NotNull PsiElement startElement,
                        @NotNull PsiElement endElement) {
       if (!(file instanceof GoFile) || editor == null || !(startElement instanceof GoBlock)) return;
 
@@ -178,7 +186,7 @@ public class GoMissingReturnInspection extends GoInspectionBase {
       editor.getCaretModel().moveToOffset(start);
       editor.getScrollingModel().scrollToCaret(ScrollType.RELATIVE);
       template.setToReformat(true);
-      TemplateManager.getInstance(project).startTemplate(editor, template, true, Collections.<String, String>emptyMap(), null);
+      TemplateManager.getInstance(project).startTemplate(editor, template, true, Collections.emptyMap(), null);
     }
   }
 }

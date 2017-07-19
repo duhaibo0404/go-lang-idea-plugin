@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import com.intellij.execution.configurations.CommandLineState;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.process.KillableColoredProcessHandler;
 import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessTerminatedListener;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.module.Module;
 import org.jetbrains.annotations.NotNull;
@@ -46,10 +47,11 @@ public abstract class GoRunningState<T extends GoRunConfigurationBase<?>> extend
   @NotNull
   @Override
   protected ProcessHandler startProcess() throws ExecutionException {
-    GeneralCommandLine commandLine = patchExecutor(createCommonExecutor())
-      .withParameterString(myConfiguration.getParams())
-      .createCommandLine();
-    return new KillableColoredProcessHandler(commandLine);
+    GoExecutor executor = patchExecutor(createCommonExecutor());
+    GeneralCommandLine commandLine = executor.withParameterString(myConfiguration.getParams()).createCommandLine();
+    KillableColoredProcessHandler handler = new KillableColoredProcessHandler(commandLine, true);
+    ProcessTerminatedListener.attach(handler);
+    return handler;
   }
 
   @NotNull

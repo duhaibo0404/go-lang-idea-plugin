@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@ import com.goide.GoConstants;
 import com.goide.GoFileType;
 import com.goide.GoLanguage;
 import com.goide.GoTypes;
-import com.goide.psi.impl.GoElementFactory;
+import com.goide.psi.impl.GoPsiImplUtil;
+import com.goide.runconfig.testing.GoTestFinder;
+import com.goide.sdk.GoPackageUtil;
 import com.goide.sdk.GoSdkUtil;
 import com.goide.stubs.GoConstSpecStub;
 import com.goide.stubs.GoFileStub;
@@ -28,25 +30,20 @@ import com.goide.stubs.GoVarSpecStub;
 import com.goide.stubs.types.*;
 import com.goide.util.GoUtil;
 import com.intellij.extapi.psi.PsiFileBase;
-import com.intellij.lang.parser.GeneratedParserUtilBase;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
-import com.intellij.openapi.util.Condition;
-import com.intellij.openapi.util.Conditions;
-import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.stubs.StubElement;
-import com.intellij.psi.stubs.StubTree;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.ArrayFactory;
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import org.jetbrains.annotations.NotNull;
@@ -64,30 +61,31 @@ public class GoFile extends PsiFileBase {
   }
 
   @Nullable
-  public String getImportPath() {
-    return GoSdkUtil.getImportPath(getParent());
+  public String getImportPath(boolean withVendoring) {
+    return GoSdkUtil.getImportPath(getParent(), withVendoring);
+  }
+
+  @NotNull
+  @Override
+  public GlobalSearchScope getResolveScope() {
+    return GoUtil.goPathResolveScope(this);
   }
 
   @NotNull
   @Override
   public SearchScope getUseScope() {
-    Module module = ModuleUtilCore.findModuleForPsiElement(this);
-    return module != null ? GoUtil.moduleScope(getProject(), module) : super.getUseScope();
+    return GoUtil.goPathUseScope(this, true);
   }
 
   @Nullable
   public GoPackageClause getPackage() {
-    GoFileStub stub = getStub();
-    if (stub != null) {
-      String name = stub.getPackageName();
-      return name != null ? GoElementFactory.createPackageClause(stub.getProject(), name) : null;
-    }
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<GoPackageClause>() {
-      @Override
-      public Result<GoPackageClause> compute() {
-        GoPackageClause packageClauses = calcFirst(Conditions.<PsiElement>instanceOf(GoPackageClause.class));
-        return Result.create(packageClauses, GoFile.this);
+    return CachedValuesManager.getCachedValue(this, () -> {
+      GoFileStub stub = getStub();
+      if (stub != null) {
+        StubElement<GoPackageClause> packageClauseStub = stub.getPackageClauseStub();
+        return CachedValueProvider.Result.create(packageClauseStub != null ? packageClauseStub.getPsi() : null, this);
       }
+      return CachedValueProvider.Result.create(findChildByClass(GoPackageClause.class), this);
     });
   }
 
@@ -95,7 +93,7 @@ public class GoFile extends PsiFileBase {
   public GoImportList getImportList() {
     return findChildByClass(GoImportList.class);
   }
-  
+
   @Nullable
   public String getBuildFlags() {
     GoFileStub stub = getStub();
@@ -108,7 +106,7 @@ public class GoFile extends PsiFileBase {
     int buildFlagLength = GoConstants.BUILD_FLAG.length();
     for (PsiComment comment : getCommentsToConsider(this)) {
       String commentText = StringUtil.trimStart(comment.getText(), "//").trim();
-      if (commentText.startsWith(GoConstants.BUILD_FLAG) && commentText.length() > buildFlagLength 
+      if (commentText.startsWith(GoConstants.BUILD_FLAG) && commentText.length() > buildFlagLength
           && StringUtil.isWhiteSpace(commentText.charAt(buildFlagLength))) {
         ContainerUtil.addIfNotNull(buildFlags, StringUtil.nullize(commentText.substring(buildFlagLength).trim(), true));
       }
@@ -119,67 +117,46 @@ public class GoFile extends PsiFileBase {
 
   @NotNull
   public List<GoFunctionDeclaration> getFunctions() {
-    StubElement<GoFile> stub = getStub();
-    if (stub != null) return getChildrenByType(stub, GoTypes.FUNCTION_DECLARATION, GoFunctionDeclarationStubElementType.ARRAY_FACTORY);
-
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<List<GoFunctionDeclaration>>() {
-      @Override
-      public Result<List<GoFunctionDeclaration>> compute() {
-        List<GoFunctionDeclaration> calc = calc(new Condition<PsiElement>() {
-          @Override
-          public boolean value(PsiElement element) {
-            return GoFunctionDeclaration.class.isInstance(element);
-          }
-        });
-        return Result.create(calc, GoFile.this);
-      }
+    return CachedValuesManager.getCachedValue(this, () -> {
+      GoFileStub stub = getStub();
+      List<GoFunctionDeclaration> functions = stub != null 
+                                              ? getChildrenByType(stub, GoTypes.FUNCTION_DECLARATION, GoFunctionDeclarationStubElementType.ARRAY_FACTORY)
+                                              : GoPsiImplUtil.goTraverser().children(this).filter(GoFunctionDeclaration.class).toList();
+      return CachedValueProvider.Result.create(functions, this);
     });
   }
 
   @NotNull
   public List<GoMethodDeclaration> getMethods() {
-    StubElement<GoFile> stub = getStub();
-    if (stub != null) return getChildrenByType(stub, GoTypes.METHOD_DECLARATION, GoMethodDeclarationStubElementType.ARRAY_FACTORY);
-
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<List<GoMethodDeclaration>>() {
-      @Override
-      public Result<List<GoMethodDeclaration>> compute() {
-        List<GoMethodDeclaration> calc = calc(new Condition<PsiElement>() {
-          @Override
-          public boolean value(PsiElement element) {
-            return GoMethodDeclaration.class.isInstance(element);
-          }
-        });
-        return Result.create(calc, GoFile.this);
-      }
+    return CachedValuesManager.getCachedValue(this, () -> {
+      StubElement<GoFile> stub = getStub();
+      List<GoMethodDeclaration> calc = stub != null
+                                       ? getChildrenByType(stub, GoTypes.METHOD_DECLARATION, GoMethodDeclarationStubElementType.ARRAY_FACTORY)
+                                       : GoPsiImplUtil.goTraverser().children(this).filter(GoMethodDeclaration.class).toList();
+      return CachedValueProvider.Result.create(calc, this);
     });
   }
 
   @NotNull
   public List<GoTypeSpec> getTypes() {
-    StubElement<GoFile> stub = getStub();
-    if (stub != null) return getChildrenByType(stub, GoTypes.TYPE_SPEC, GoTypeSpecStubElementType.ARRAY_FACTORY);
-
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<List<GoTypeSpec>>() {
-      @Override
-      public Result<List<GoTypeSpec>> compute() {
-        return Result.create(calcTypes(), GoFile.this);
-      }
+    return CachedValuesManager.getCachedValue(this, () -> {
+      StubElement<GoFile> stub = getStub();
+      List<GoTypeSpec> types = stub != null ? getChildrenByType(stub, GoTypes.TYPE_SPEC, GoTypeSpecStubElementType.ARRAY_FACTORY) 
+                                            : calcTypes();
+      return CachedValueProvider.Result.create(types, this);
     });
   }
 
   @NotNull
   public List<GoImportSpec> getImports() {
-    StubElement<GoFile> stub = getStub();
-    if (stub != null) return getChildrenByType(stub, GoTypes.IMPORT, GoImportSpecStubElementType.ARRAY_FACTORY);
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<List<GoImportSpec>>() {
-      @Override
-      public Result<List<GoImportSpec>> compute() {
-        return Result.create(calcImports(), GoFile.this);
-      }
+    return CachedValuesManager.getCachedValue(this, () -> {
+      StubElement<GoFile> stub = getStub();
+      List<GoImportSpec> imports = stub != null ? getChildrenByType(stub, GoTypes.IMPORT_SPEC, GoImportSpecStubElementType.ARRAY_FACTORY) 
+                                                : calcImports();
+      return CachedValueProvider.Result.create(imports, this);
     });
   }
-  
+
   public GoImportSpec addImport(String path, String alias) {
     GoImportList importList = getImportList();
     if (importList != null) {
@@ -193,24 +170,17 @@ public class GoFile extends PsiFileBase {
    */
   @NotNull
   public Map<String, GoImportSpec> getImportedPackagesMap() {
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<Map<String, GoImportSpec>>() {
-      @Nullable
-      @Override
-      public Result<Map<String, GoImportSpec>> compute() {
-        Collection<PsiDirectory> extraDeps = ContainerUtil.newHashSet();
-        Map<String, GoImportSpec> map = ContainerUtil.newHashMap();
-        for (GoImportSpec spec : getImports()) {
-          if (!spec.isForSideEffects()) {
-            PsiDirectory resolve = spec.getImportString().resolve();
-            extraDeps.add(resolve);
-            String path = GoSdkUtil.getImportPath(resolve);
-            if (StringUtil.isNotEmpty(path)) {
-              map.put(path, spec);
-            }
+    return CachedValuesManager.getCachedValue(this, () -> {
+      Map<String, GoImportSpec> map = ContainerUtil.newHashMap();
+      for (GoImportSpec spec : getImports()) {
+        if (!spec.isForSideEffects()) {
+          String importPath = spec.getPath();
+          if (StringUtil.isNotEmpty(importPath)) {
+            map.put(importPath, spec);
           }
         }
-        return Result.create(map, GoSdkUtil.getSdkAndLibrariesCacheDependencies(GoFile.this, ArrayUtil.toObjectArray(extraDeps)));
       }
+      return CachedValueProvider.Result.create(map, this);
     });
   }
 
@@ -219,178 +189,113 @@ public class GoFile extends PsiFileBase {
    */
   @NotNull
   public MultiMap<String, GoImportSpec> getImportMap() {
-    MultiMap<String, GoImportSpec> map = MultiMap.createLinked();
-    for (GoImportSpec spec : getImports()) {
-      String alias = spec.getAlias();
-      if (alias != null) {
-        map.putValue(alias, spec);
-        continue;
-      }
-      if (spec.isDot()) {
-        map.putValue(".", spec);
-        continue;
-      }
-      GoImportString string = spec.getImportString();
-      PsiDirectory dir = string.resolve();
-      Collection<String> packagesInDirectory = GoUtil.getAllPackagesInDirectory(dir, true);
-      if (!packagesInDirectory.isEmpty()) {
-        for (String packageNames : packagesInDirectory) {
-          if (!StringUtil.isEmpty(packageNames)) {
-            map.putValue(packageNames, spec);
+    return CachedValuesManager.getCachedValue(this, () -> {
+      MultiMap<String, GoImportSpec> map = MultiMap.createLinked();
+      List<Object> dependencies = ContainerUtil.newArrayList(this);
+      Module module = ModuleUtilCore.findModuleForPsiElement(this);
+      for (GoImportSpec spec : getImports()) {
+        String alias = spec.getAlias();
+        if (alias != null) {
+          map.putValue(alias, spec);
+          continue;
+        }
+        if (spec.isDot()) {
+          map.putValue(".", spec);
+          continue;
+        }
+        GoImportString string = spec.getImportString();
+        PsiDirectory dir = string.resolve();
+        // todo[zolotov]: implement package modification tracker
+        ContainerUtil.addIfNotNull(dependencies, dir);
+        Collection<String> packagesInDirectory = GoPackageUtil.getAllPackagesInDirectory(dir, module, true);
+        if (!packagesInDirectory.isEmpty()) {
+          for (String packageNames : packagesInDirectory) {
+            if (!StringUtil.isEmpty(packageNames)) {
+              map.putValue(packageNames, spec);
+            }
+          }
+        }
+        else {
+          String key = spec.getLocalPackageName();
+          if (!StringUtil.isEmpty(key)) {
+            map.putValue(key, spec);
           }
         }
       }
-      else {
-        String key = spec.getLocalPackageName();
-        if (!StringUtil.isEmpty(key)) {
-          map.putValue(key, spec);
-        }
-      }
-    }
-    return map;
+      return CachedValueProvider.Result.create(map, ArrayUtil.toObjectArray(dependencies));
+    });
   }
 
   @NotNull
   public List<GoVarDefinition> getVars() {
-    StubElement<GoFile> stub = getStub();
-    if (stub != null) {
-      List<GoVarDefinition> result = ContainerUtil.newArrayList();
-      List<GoVarSpec> varSpecs = getChildrenByType(stub, GoTypes.VAR_SPEC, GoVarSpecStubElementType.ARRAY_FACTORY);
-      for (GoVarSpec spec : varSpecs) {
-        GoVarSpecStub specStub = spec.getStub();
-        if (specStub == null) continue;
-        result.addAll(getChildrenByType(specStub, GoTypes.VAR_DEFINITION, GoVarDefinitionStubElementType.ARRAY_FACTORY));
+    return CachedValuesManager.getCachedValue(this, () -> {
+      List<GoVarDefinition> result;
+      StubElement<GoFile> stub = getStub();
+      if (stub != null) {
+        result = ContainerUtil.newArrayList();
+        List<GoVarSpec> varSpecs = getChildrenByType(stub, GoTypes.VAR_SPEC, GoVarSpecStubElementType.ARRAY_FACTORY);
+        for (GoVarSpec spec : varSpecs) {
+          GoVarSpecStub specStub = spec.getStub();
+          if (specStub == null) continue;
+          result.addAll(getChildrenByType(specStub, GoTypes.VAR_DEFINITION, GoVarDefinitionStubElementType.ARRAY_FACTORY));
+        }
       }
-      return result;
-    }
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<List<GoVarDefinition>>() {
-      @Override
-      public Result<List<GoVarDefinition>> compute() {
-        return Result.create(calcVars(), GoFile.this);
+      else {
+        result = calcVars();
       }
+      return CachedValueProvider.Result.create(result, this);
     });
   }
 
   @NotNull
   public List<GoConstDefinition> getConstants() {
-    StubElement<GoFile> stub = getStub();
-    if (stub != null) {
-      List<GoConstDefinition> result = ContainerUtil.newArrayList();
-      List<GoConstSpec> constSpecs = getChildrenByType(stub, GoTypes.CONST_SPEC, GoConstSpecStubElementType.ARRAY_FACTORY);
-      for (GoConstSpec spec : constSpecs) {
-        GoConstSpecStub specStub = spec.getStub();
-        if (specStub == null) continue;
-        result.addAll(getChildrenByType(specStub, GoTypes.CONST_DEFINITION, GoConstDefinitionStubElementType.ARRAY_FACTORY));
+    return CachedValuesManager.getCachedValue(this, () -> {
+      StubElement<GoFile> stub = getStub();
+      List<GoConstDefinition> result;
+      if (stub != null) {
+        result = ContainerUtil.newArrayList();
+        List<GoConstSpec> constSpecs = getChildrenByType(stub, GoTypes.CONST_SPEC, GoConstSpecStubElementType.ARRAY_FACTORY);
+        for (GoConstSpec spec : constSpecs) {
+          GoConstSpecStub specStub = spec.getStub();
+          if (specStub == null) continue;
+          result.addAll(getChildrenByType(specStub, GoTypes.CONST_DEFINITION, GoConstDefinitionStubElementType.ARRAY_FACTORY));
+        }
       }
-      return result;
-    }
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<List<GoConstDefinition>>() {
-      @Override
-      public Result<List<GoConstDefinition>> compute() {
-        return Result.create(calcConsts(), GoFile.this);
+      else {
+        result = calcConsts();
       }
+      return CachedValueProvider.Result.create(result, this);
     });
   }
 
   @NotNull
   private List<GoTypeSpec> calcTypes() {
-    final List<GoTypeSpec> result = ContainerUtil.newArrayList();
-    processChildrenDummyAware(this, new Processor<PsiElement>() {
-      @Override
-      public boolean process(PsiElement e) {
-        if (e instanceof GoTypeDeclaration) {
-          for (GoTypeSpec spec : ((GoTypeDeclaration)e).getTypeSpecList()) {
-            result.add(spec);
-          }
-        }
-        return true;
-      }
-    });
-    return result;
+    return GoPsiImplUtil.goTraverser().children(this).filter(GoTypeDeclaration.class).flatten(GoTypeDeclaration::getTypeSpecList).toList();
   }
 
   @NotNull
   private List<GoImportSpec> calcImports() {
-    List<GoImportSpec> result = ContainerUtil.newArrayList();
     GoImportList list = getImportList();
     if (list == null) return ContainerUtil.emptyList();
+    List<GoImportSpec> result = ContainerUtil.newArrayList();
     for (GoImportDeclaration declaration : list.getImportDeclarationList()) {
-      for (GoImportSpec spec : declaration.getImportSpecList()) {
-        result.add(spec);
-      }
+      result.addAll(declaration.getImportSpecList());
     }
     return result;
   }
 
   @NotNull
   private List<GoVarDefinition> calcVars() {
-    final List<GoVarDefinition> result = ContainerUtil.newArrayList();
-    processChildrenDummyAware(this, new Processor<PsiElement>() {
-      @Override
-      public boolean process(PsiElement e) {
-        if (e instanceof GoVarDeclaration) {
-          for (GoVarSpec spec : ((GoVarDeclaration)e).getVarSpecList()) {
-            for (GoVarDefinition def : spec.getVarDefinitionList()) {
-              result.add(def);
-            }
-          }
-        }
-        return true;
-      }
-    });
-    return result;
+    return GoPsiImplUtil.goTraverser().children(this).filter(GoVarDeclaration.class)
+      .flatten(GoVarDeclaration::getVarSpecList)
+      .flatten(GoVarSpec::getVarDefinitionList).toList();
   }
 
   @NotNull
   private List<GoConstDefinition> calcConsts() {
-    final List<GoConstDefinition> result = ContainerUtil.newArrayList();
-    processChildrenDummyAware(this, new Processor<PsiElement>() {
-      @Override
-      public boolean process(PsiElement e) {
-        if (e instanceof GoConstDeclaration) {
-          for (GoConstSpec spec : ((GoConstDeclaration)e).getConstSpecList()) {
-            for (GoConstDefinition def : spec.getConstDefinitionList()) {
-              result.add(def);
-            }
-          }
-        }
-        return true;
-      }
-    });
-    return result;
-  }
-  
-  @Nullable
-  private <T extends PsiElement> T calcFirst(@NotNull final Condition<PsiElement> condition) {
-    final Ref<T> result = Ref.create(null);
-    processChildrenDummyAware(this, new Processor<PsiElement>() {
-      @Override
-      public boolean process(PsiElement e) {
-        if (condition.value(e)) {
-          //noinspection unchecked
-          result.set((T)e);
-          return false;
-        }
-        return true;
-      }
-    });
-    return result.get();
-  }
-
-  @NotNull
-  private <T extends PsiElement> List<T> calc(@NotNull final Condition<PsiElement> condition) {
-    final List<T> result = ContainerUtil.newArrayList();
-    processChildrenDummyAware(this, new Processor<PsiElement>() {
-      @Override
-      public boolean process(PsiElement e) {
-        if (condition.value(e)) {
-          //noinspection unchecked
-          result.add((T)e);
-        }
-        return true;
-      }
-    });
-    return result;
+    return GoPsiImplUtil.goTraverser().children(this).filter(GoConstDeclaration.class)
+      .flatten(GoConstDeclaration::getConstSpecList)
+      .flatten(GoConstSpec::getConstDefinitionList).toList();
   }
 
   @NotNull
@@ -411,17 +316,22 @@ public class GoFile extends PsiFileBase {
 
   @Nullable
   public String getPackageName() {
-    GoFileStub stub = getStub();
-    if (stub != null) return stub.getPackageName();
-
-    GoPackageClause packageClause = getPackage();
-    if (packageClause != null) {
-      PsiElement packageIdentifier = packageClause.getIdentifier();
-      if (packageIdentifier != null) {
-        return packageIdentifier.getText().trim();
+    return CachedValuesManager.getCachedValue(this, () -> {
+      GoFileStub stub = getStub();
+      if (stub != null) {
+        return CachedValueProvider.Result.create(stub.getPackageName(), this);
       }
+      GoPackageClause packageClause = getPackage();
+      return CachedValueProvider.Result.create(packageClause != null ? packageClause.getName() : null, this);
+    });
+  }
+
+  public String getCanonicalPackageName() {
+    String packageName = getPackageName();
+    if (StringUtil.isNotEmpty(packageName) && GoTestFinder.isTestFile(this)) {
+      return StringUtil.trimEnd(packageName, GoConstants.TEST_SUFFIX);
     }
-    return null;
+    return packageName;
   }
 
   @Nullable
@@ -432,12 +342,7 @@ public class GoFile extends PsiFileBase {
   }
 
   public boolean hasCPathImport() {
-    for (GoImportSpec importSpec : getImports()) {
-      if (importSpec.isCImport()) {
-        return true;
-      }
-    }
-    return false;
+    return getImportedPackagesMap().containsKey(GoConstants.C_PATH);
   }
 
   public void deleteImport(@NotNull GoImportSpec importSpec) {
@@ -447,37 +352,13 @@ public class GoFile extends PsiFileBase {
     elementToDelete.delete();
   }
 
-  private static boolean processChildrenDummyAware(@NotNull GoFile file, @NotNull final Processor<PsiElement> processor) {
-    StubTree stubTree = file.getStubTree();
-    if (stubTree != null) {
-      List<StubElement<?>> plainList = stubTree.getPlainList();
-      for (StubElement<?> stubElement : plainList) {
-        PsiElement psi = stubElement.getPsi();
-        if (!processor.process(psi)) return false;
-      }
-      return true;
-    }
-    return new Processor<PsiElement>() {
-      @Override
-      public boolean process(@NotNull PsiElement psiElement) {
-        for (PsiElement child = psiElement.getFirstChild(); child != null; child = child.getNextSibling()) {
-          if (child instanceof GeneratedParserUtilBase.DummyBlock) {
-            if (!process(child)) return false;
-          }
-          else if (!processor.process(child)) return false;
-        }
-        return true;
-      }
-    }.process(file);
-  }
-
   @NotNull
   private static <E extends PsiElement> List<E> getChildrenByType(@NotNull StubElement<? extends PsiElement> stub,
                                                                   IElementType elementType,
                                                                   ArrayFactory<E> f) {
     return Arrays.asList(stub.getChildrenByType(elementType, f));
   }
-  
+
   @NotNull
   private static Collection<PsiComment> getCommentsToConsider(@NotNull GoFile file) {
     Collection<PsiComment> commentsToConsider = ContainerUtil.newArrayList();
@@ -497,12 +378,7 @@ public class GoFile extends PsiFileBase {
       }
       child = child.getNextSibling();
     }
-    final int finalLastEmptyLineOffset = lastEmptyLineOffset;
-    return ContainerUtil.filter(commentsToConsider, new Condition<PsiComment>() {
-      @Override
-      public boolean value(PsiComment comment) {
-        return comment.getTextRange().getStartOffset() < finalLastEmptyLineOffset;
-      }
-    });
+    int finalLastEmptyLineOffset = lastEmptyLineOffset;
+    return ContainerUtil.filter(commentsToConsider, comment -> comment.getTextRange().getStartOffset() < finalLastEmptyLineOffset);
   }
 }

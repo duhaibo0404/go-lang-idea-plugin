@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,15 @@
 package com.goide.util;
 
 import com.goide.GoConstants;
+import com.goide.project.GoModuleSettings;
 import com.goide.runconfig.GoConsoleFilter;
+import com.goide.runconfig.GoRunUtil;
 import com.goide.sdk.GoSdkService;
 import com.goide.sdk.GoSdkUtil;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.ExecutionHelper;
 import com.intellij.execution.ExecutionModes;
 import com.intellij.execution.RunContentExecutor;
-import com.intellij.execution.configurations.EncodingEnvironmentUtil;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.ParametersList;
 import com.intellij.execution.configurations.PtyCommandLine;
@@ -40,15 +41,14 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Ref;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.util.Consumer;
 import com.intellij.util.EnvironmentUtil;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.ThreeState;
 import com.intellij.util.containers.ContainerUtil;
-import com.pty4j.unix.PtyHelpers;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -61,22 +61,24 @@ public class GoExecutor {
   private static final Logger LOGGER = Logger.getInstance(GoExecutor.class);
   @NotNull private final Map<String, String> myExtraEnvironment = ContainerUtil.newHashMap();
   @NotNull private final ParametersList myParameterList = new ParametersList();
-  @NotNull private ProcessOutput myProcessOutput = new ProcessOutput();
+  @NotNull private final ProcessOutput myProcessOutput = new ProcessOutput();
   @NotNull private final Project myProject;
+  @Nullable private Boolean myVendoringEnabled;
   @Nullable private final Module myModule;
   @Nullable private String myGoRoot;
   @Nullable private String myGoPath;
   @Nullable private String myEnvPath;
   @Nullable private String myWorkDirectory;
-  private boolean myShowOutputOnError = false;
-  private boolean myShowNotificationsOnError = false;
-  private boolean myShowNotificationsOnSuccess = false;
-  private boolean myPassParentEnvironment = true;
-  private boolean myPtyDisabled = false;
-  @Nullable private String myExePath = null;
+  private boolean myShowOutputOnError;
+  private boolean myShowNotificationsOnError;
+  private boolean myShowNotificationsOnSuccess;
+  private boolean myShowGoEnvVariables = true;
+  private GeneralCommandLine.ParentEnvironmentType myParentEnvironmentType = GeneralCommandLine.ParentEnvironmentType.CONSOLE;
+  private boolean myPtyDisabled;
+  @Nullable private String myExePath;
   @Nullable private String myPresentableName;
   private OSProcessHandler myProcessHandler;
-  private Collection<ProcessListener> myProcessListeners = ContainerUtil.newArrayList();
+  private final Collection<ProcessListener> myProcessListeners = ContainerUtil.newArrayList();
 
   private GoExecutor(@NotNull Project project, @Nullable Module module) {
     myProject = project;
@@ -88,7 +90,7 @@ public class GoExecutor {
   }
 
   @NotNull
-  public static GoExecutor in(@NotNull Project project) {
+  private static GoExecutor in(@NotNull Project project) {
     return new GoExecutor(project, null)
       .withGoRoot(GoSdkService.getInstance(project).getSdkHomePath(null))
       .withGoPath(GoSdkUtil.retrieveGoPath(project, null))
@@ -98,10 +100,12 @@ public class GoExecutor {
   @NotNull
   public static GoExecutor in(@NotNull Module module) {
     Project project = module.getProject();
+    ThreeState vendoringEnabled = GoModuleSettings.getInstance(module).getVendoringEnabled();
     return new GoExecutor(project, module)
       .withGoRoot(GoSdkService.getInstance(project).getSdkHomePath(module))
       .withGoPath(GoSdkUtil.retrieveGoPath(project, module))
-      .withEnvPath(GoSdkUtil.retrieveEnvironmentPathForGo(project, module));
+      .withEnvPath(GoSdkUtil.retrieveEnvironmentPathForGo(project, module))
+      .withVendoring(vendoringEnabled != ThreeState.UNSURE ? vendoringEnabled.toBoolean() : null);
   }
 
   @NotNull
@@ -140,6 +144,12 @@ public class GoExecutor {
     return this;
   }
 
+  @NotNull
+  public GoExecutor withVendoring(@Nullable Boolean enabled) {
+    myVendoringEnabled = enabled;
+    return this;
+  }
+
   public GoExecutor withProcessListener(@NotNull ProcessListener listener) {
     myProcessListeners.add(listener);
     return this;
@@ -153,7 +163,8 @@ public class GoExecutor {
 
   @NotNull
   public GoExecutor withPassParentEnvironment(boolean passParentEnvironment) {
-    myPassParentEnvironment = passParentEnvironment;
+    myParentEnvironmentType = passParentEnvironment ? GeneralCommandLine.ParentEnvironmentType.CONSOLE
+                                                    : GeneralCommandLine.ParentEnvironmentType.NONE;
     return this;
   }
 
@@ -169,6 +180,11 @@ public class GoExecutor {
     return this;
   }
 
+  public GoExecutor showGoEnvVariables(boolean show) {
+    myShowGoEnvVariables = show;
+    return this;
+  } 
+
   @NotNull
   public GoExecutor showOutputOnError() {
     myShowOutputOnError = true;
@@ -182,9 +198,9 @@ public class GoExecutor {
   }
 
   @NotNull
-  public GoExecutor showNotifications(boolean onErrorOnly) {
-    myShowNotificationsOnError = true;
-    myShowNotificationsOnSuccess = !onErrorOnly;
+  public GoExecutor showNotifications(boolean onError, boolean onSuccess) {
+    myShowNotificationsOnError = onError;
+    myShowNotificationsOnSuccess = onSuccess;
     return this;
   }
 
@@ -192,13 +208,21 @@ public class GoExecutor {
     Logger.getInstance(getClass()).assertTrue(!ApplicationManager.getApplication().isDispatchThread(),
                                               "It's bad idea to run external tool on EDT");
     Logger.getInstance(getClass()).assertTrue(myProcessHandler == null, "Process has already run with this executor instance");
-    final Ref<Boolean> result = Ref.create(false);
+    Ref<Boolean> result = Ref.create(false);
     GeneralCommandLine commandLine = null;
     try {
       commandLine = createCommandLine();
-
-      myProcessHandler = new KillableColoredProcessHandler(commandLine);
-      final GoHistoryProcessListener historyProcessListener = new GoHistoryProcessListener();
+      GeneralCommandLine finalCommandLine = commandLine;
+      myProcessHandler = new KillableColoredProcessHandler(finalCommandLine, true) {
+        @Override
+        public void startNotify() {
+          if (myShowGoEnvVariables) {
+            GoRunUtil.printGoEnvVariables(finalCommandLine, this);
+          }
+          super.startNotify();
+        }
+      };
+      GoHistoryProcessListener historyProcessListener = new GoHistoryProcessListener();
       myProcessHandler.addProcessListener(historyProcessListener);
       for (ProcessListener listener : myProcessListeners) {
         myProcessHandler.addProcessListener(listener);
@@ -208,23 +232,22 @@ public class GoExecutor {
         @Override
         public void processTerminated(@NotNull ProcessEvent event) {
           super.processTerminated(event);
-          final boolean success = event.getExitCode() == 0 && myProcessOutput.getStderr().isEmpty();
+          boolean success = event.getExitCode() == 0 && myProcessOutput.getStderr().isEmpty();
           boolean nothingToShow = myProcessOutput.getStdout().isEmpty() && myProcessOutput.getStderr().isEmpty();
-          final boolean cancelledByUser = (SystemInfo.isWindows || event.getExitCode() == PtyHelpers.SIGINT) && nothingToShow;
+          boolean cancelledByUser = (event.getExitCode() == -1 || event.getExitCode() == 2) && nothingToShow;
           result.set(success);
-          if (success && myShowNotificationsOnSuccess) {
-            showNotification("Finished successfully", NotificationType.INFORMATION);
+          if (success) {
+            if (myShowNotificationsOnSuccess) {
+              showNotification("Finished successfully", NotificationType.INFORMATION);
+            }
           }
-          else if (cancelledByUser && myShowNotificationsOnError) {
-            showNotification("Interrupted", NotificationType.WARNING);
+          else if (cancelledByUser) {
+            if (myShowNotificationsOnError) {
+              showNotification("Interrupted", NotificationType.WARNING);
+            }
           }
-          if (!success && !cancelledByUser && myShowOutputOnError) {
-            ApplicationManager.getApplication().invokeLater(new Runnable() {
-              @Override
-              public void run() {
-                showOutput(myProcessHandler, historyProcessListener);
-              }
-            });
+          else if (myShowOutputOnError) {
+            ApplicationManager.getApplication().invokeLater(() -> showOutput(myProcessHandler, historyProcessListener));
           }
         }
       };
@@ -250,14 +273,14 @@ public class GoExecutor {
     }
   }
 
-  public void executeWithProgress(final boolean modal) {
+  public void executeWithProgress(boolean modal) {
     //noinspection unchecked
     executeWithProgress(modal, Consumer.EMPTY_CONSUMER);
   }
 
-  public void executeWithProgress(final boolean modal, @NotNull final Consumer<Boolean> consumer) {
+  public void executeWithProgress(boolean modal, @NotNull Consumer<Boolean> consumer) {
     ProgressManager.getInstance().run(new Task.Backgroundable(myProject, getPresentableName(), true) {
-      private boolean doNotStart = false;
+      private boolean doNotStart;
 
       @Override
       public void onCancel() {
@@ -278,6 +301,7 @@ public class GoExecutor {
         return modal;
       }
 
+      @Override
       public void run(@NotNull ProgressIndicator indicator) {
         if (doNotStart || myProject == null || myProject.isDisposed()) {
           return;
@@ -293,13 +317,10 @@ public class GoExecutor {
     return myProcessHandler;
   }
 
-  private void showNotification(@NotNull final String message, final NotificationType type) {
-    ApplicationManager.getApplication().invokeLater(new Runnable() {
-      @Override
-      public void run() {
-        String title = getPresentableName();
-        Notifications.Bus.notify(GoConstants.GO_EXECUTION_NOTIFICATION_GROUP.createNotification(title, message, type, null), myProject);
-      }
+  private void showNotification(@NotNull String message, NotificationType type) {
+    ApplicationManager.getApplication().invokeLater(() -> {
+      String title = getPresentableName();
+      Notifications.Bus.notify(GoConstants.GO_EXECUTION_NOTIFICATION_GROUP.createNotification(title, message, type, null), myProject);
     });
   }
 
@@ -325,11 +346,14 @@ public class GoExecutor {
       throw new ExecutionException("Sdk is not set or Sdk home path is empty for module");
     }
 
-    GeneralCommandLine commandLine = !myPtyDisabled ? new PtyCommandLine() : new GeneralCommandLine();
+    GeneralCommandLine commandLine = !myPtyDisabled && PtyCommandLine.isEnabled() ? new PtyCommandLine() : new GeneralCommandLine();
     commandLine.setExePath(ObjectUtils.notNull(myExePath, GoSdkService.getGoExecutablePath(myGoRoot)));
     commandLine.getEnvironment().putAll(myExtraEnvironment);
     commandLine.getEnvironment().put(GoConstants.GO_ROOT, StringUtil.notNullize(myGoRoot));
     commandLine.getEnvironment().put(GoConstants.GO_PATH, StringUtil.notNullize(myGoPath));
+    if (myVendoringEnabled != null) {
+      commandLine.getEnvironment().put(GoConstants.GO_VENDORING_EXPERIMENT, myVendoringEnabled ? "1" : "0");
+    }
 
     Collection<String> paths = ContainerUtil.newArrayList();
     ContainerUtil.addIfNotNull(paths, StringUtil.nullize(commandLine.getEnvironment().get(GoConstants.PATH), true));
@@ -339,9 +363,8 @@ public class GoExecutor {
 
     commandLine.withWorkDirectory(myWorkDirectory);
     commandLine.addParameters(myParameterList.getList());
-    commandLine.setPassParentEnvironment(myPassParentEnvironment);
+    commandLine.withParentEnvironmentType(myParentEnvironmentType);
     commandLine.withCharset(CharsetToolkit.UTF8_CHARSET);
-    EncodingEnvironmentUtil.setLocaleEnvironmentIfMac(commandLine);
     return commandLine;
   }
 

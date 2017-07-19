@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,16 @@
 package com.goide.runconfig.testing;
 
 import com.goide.psi.GoFile;
+import com.goide.psi.GoFunctionDeclaration;
 import com.goide.psi.GoFunctionOrMethodDeclaration;
+import com.goide.psi.GoMethodDeclaration;
 import com.goide.runconfig.GoRunUtil;
 import com.goide.sdk.GoSdkService;
 import com.intellij.execution.actions.ConfigurationContext;
 import com.intellij.execution.actions.RunConfigurationProducer;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
@@ -36,7 +39,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public abstract class GoTestRunConfigurationProducerBase extends RunConfigurationProducer<GoTestRunConfiguration> {
-
   @NotNull private final GoTestFramework myFramework;
 
   protected GoTestRunConfigurationProducerBase(@NotNull GoTestFramework framework) {
@@ -54,58 +56,66 @@ public abstract class GoTestRunConfigurationProducerBase extends RunConfiguratio
     }
 
     Module module = ModuleUtilCore.findModuleForPsiElement(contextElement);
-    if (module == null || !GoSdkService.getInstance(module.getProject()).isGoModule(module)) return false;
+    Project project = contextElement.getProject();
+    if (module == null || !GoSdkService.getInstance(project).isGoModule(module)) return false;
     if (!myFramework.isAvailable(module)) return false;
 
     configuration.setModule(module);
     configuration.setTestFramework(myFramework);
     if (contextElement instanceof PsiDirectory) {
-      for (PsiFile file : ((PsiDirectory)contextElement).getFiles()) {
-        if (myFramework.isAvailableOnFile(file)) {
-          configuration.setName(getPackageConfigurationName(((PsiDirectory)contextElement).getName()));
-          configuration.setKind(GoTestRunConfiguration.Kind.DIRECTORY);
-          String directoryPath = ((PsiDirectory)contextElement).getVirtualFile().getPath();
-          configuration.setDirectoryPath(directoryPath);
-          configuration.setWorkingDirectory(directoryPath);
-          return true;
-        }
-      }
-      return false;
+      configuration.setName(getPackageConfigurationName(((PsiDirectory)contextElement).getName()));
+      configuration.setKind(GoTestRunConfiguration.Kind.DIRECTORY);
+      String directoryPath = ((PsiDirectory)contextElement).getVirtualFile().getPath();
+      configuration.setDirectoryPath(directoryPath);
+      configuration.setWorkingDirectory(directoryPath);
+      return true;
     }
-    else {
-      PsiFile file = contextElement.getContainingFile();
-      if (myFramework.isAvailableOnFile(file)) {
-        if (GoRunUtil.isPackageContext(contextElement)) {
-          String packageName = StringUtil.notNullize(((GoFile)file).getImportPath());
-          configuration.setKind(GoTestRunConfiguration.Kind.PACKAGE);
-          configuration.setPackage(packageName);
-          configuration.setName(getPackageConfigurationName(packageName));
-        }
-        else {
-          GoFunctionOrMethodDeclaration function = findTestFunctionInContext(contextElement);
-          if (shouldSkipContext(function)) return false;
 
-          if (function != null) {
-            configuration.setName(getFunctionConfigurationName(function, getFileConfigurationName(file.getName())));
+    PsiFile file = contextElement.getContainingFile();
+    if (myFramework.isAvailableOnFile(file)) {
+      String importPath = ((GoFile)file).getImportPath(false);
+      if (GoRunUtil.isPackageContext(contextElement) && StringUtil.isNotEmpty(importPath)) {
+        configuration.setKind(GoTestRunConfiguration.Kind.PACKAGE);
+        configuration.setPackage(importPath);
+        configuration.setName(getPackageConfigurationName(importPath));
+        return true;
+      }
+      else {
+        GoFunctionOrMethodDeclaration function = findTestFunctionInContext(contextElement);
+        if (function != null) {
+          if (myFramework.isAvailableOnFunction(function)) {
+            configuration.setName(getFunctionConfigurationName(function, file.getName()));
             configuration.setPattern("^" + function.getName() + "$");
 
             configuration.setKind(GoTestRunConfiguration.Kind.PACKAGE);
-            configuration.setPackage(StringUtil.notNullize(((GoFile)file).getImportPath()));
-          }
-          else {
-            configuration.setName(getFileConfigurationName(file.getName()));
-            configuration.setKind(GoTestRunConfiguration.Kind.FILE);
-            configuration.setFilePath(file.getVirtualFile().getPath());
+            configuration.setPackage(StringUtil.notNullize(((GoFile)file).getImportPath(false)));
+            return true;
           }
         }
-        return true;
+        else if (hasSupportedFunctions((GoFile)file)) {
+          configuration.setName(getFileConfigurationName(file.getName()));
+          configuration.setKind(GoTestRunConfiguration.Kind.FILE);
+          configuration.setFilePath(file.getVirtualFile().getPath());
+          return true;
+        }
       }
     }
-
     return false;
   }
 
-  protected abstract boolean shouldSkipContext(@Nullable GoFunctionOrMethodDeclaration context);
+  private boolean hasSupportedFunctions(@NotNull GoFile file) {
+    for (GoFunctionDeclaration declaration : file.getFunctions()) {
+      if (myFramework.isAvailableOnFunction(declaration)) {
+        return true;
+      }
+    }
+    for (GoMethodDeclaration declaration : file.getMethods()) {
+      if (myFramework.isAvailableOnFunction(declaration)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   @NotNull
   protected String getFileConfigurationName(@NotNull String fileName) {
@@ -141,16 +151,17 @@ public abstract class GoTestRunConfigurationProducerBase extends RunConfiguratio
         }
       case PACKAGE:
         if (!GoTestFinder.isTestFile(file)) return false;
-        if (!Comparing.equal(((GoFile)file).getImportPath(), configuration.getPackage())) return false;
+        if (!Comparing.equal(((GoFile)file).getImportPath(false), configuration.getPackage())) return false;
         if (GoRunUtil.isPackageContext(contextElement) && configuration.getPattern().isEmpty()) return true;
 
         GoFunctionOrMethodDeclaration contextFunction = findTestFunctionInContext(contextElement);
-        return contextFunction != null
+        return contextFunction != null && myFramework.isAvailableOnFunction(contextFunction)
                ? configuration.getPattern().equals("^" + contextFunction.getName() + "$")
                : configuration.getPattern().isEmpty();
       case FILE:
-        return GoTestFinder.isTestFile(file) && FileUtil.pathsEqual(configuration.getFilePath(), file.getVirtualFile().getPath()) &&
-               findTestFunctionInContext(contextElement) == null;
+        GoFunctionOrMethodDeclaration contextTestFunction = findTestFunctionInContext(contextElement);
+        return contextTestFunction == null && GoTestFinder.isTestFile(file) && 
+               FileUtil.pathsEqual(configuration.getFilePath(), file.getVirtualFile().getPath());
     }
     return false;
   }
@@ -158,6 +169,6 @@ public abstract class GoTestRunConfigurationProducerBase extends RunConfiguratio
   @Nullable
   private static GoFunctionOrMethodDeclaration findTestFunctionInContext(@NotNull PsiElement contextElement) {
     GoFunctionOrMethodDeclaration function = PsiTreeUtil.getNonStrictParentOfType(contextElement, GoFunctionOrMethodDeclaration.class);
-    return function != null && GoTestFunctionType.fromName(function.getName()) == GoTestFunctionType.TEST ? function : null;
+    return function != null && GoTestFunctionType.fromName(function.getName()) != null ? function : null;
   }
 }

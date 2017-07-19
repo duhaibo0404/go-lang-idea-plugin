@@ -5,14 +5,14 @@ import "net/url"
 
 type alias Formatter
 
-type int int
+type <warning descr="Type 'int' collides with builtin type">int</warning> int
 
 type Car struct { wheelCount int }
 func (car Car) numberOfWheels() int { return car.wheelCount }
 
 type Ferrari struct { Car }
 
-func <warning>Println</warning>(o ...interface{})  { // should be redeclared!
+func <warning>Println</warning>(...interface{})  { // should be redeclared!
 //   fmt.Println(o...)
 }
 
@@ -58,7 +58,6 @@ func main() {
 
     c := Car{4}
     Println("A Car has this many wheels:", c.wheelCount)
-    Println("A Car has this many wheels:", c.numberOfWheels)
     Println("A Car has this many wheels:", c.numberOfWheels())
 
     a := AstonMartin{Car{4}}
@@ -120,7 +119,38 @@ func <warning>NewA</warning>(b int) *A {
 
 func _() {
 	tr := &url.Userinfo{
-		<error>username</error>:"Name",
+		<error descr="Unknown field 'username' in struct literal">username</error>:"Name",
 	}
 	_ = tr
+}
+
+
+type Mtx struct {
+	state int32
+	sema  uint32
+}
+
+func (m *Mtx) Lock() {
+
+}
+
+func (m *Mtx) Unlock() {
+
+}
+
+type Locker interface {
+	Lock()
+	Unlock()
+}
+
+type TMtx struct {
+	M struct {
+		  Mtx
+	  }
+}
+
+func _() {
+	t := TMtx{}
+	t.M.Lock()
+	t.M.Unlock()
 }

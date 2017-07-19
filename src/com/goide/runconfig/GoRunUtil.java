@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,11 @@ import com.goide.GoConstants;
 import com.goide.GoFileType;
 import com.goide.psi.GoFile;
 import com.goide.psi.GoPackageClause;
+import com.goide.runconfig.testing.GoTestFinder;
 import com.intellij.execution.actions.ConfigurationContext;
+import com.intellij.execution.configurations.GeneralCommandLine;
+import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessOutputTypes;
 import com.intellij.ide.scratch.ScratchFileType;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
@@ -31,6 +35,7 @@ import com.intellij.openapi.ui.TextBrowseFolderListener;
 import com.intellij.openapi.ui.TextComponentAccessor;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.util.Condition;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -40,6 +45,8 @@ import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Map;
 
 public class GoRunUtil {
   private GoRunUtil() {
@@ -85,21 +92,18 @@ public class GoRunUtil {
     return psiElement;
   }
 
-  public static void installGoWithMainFileChooser(final Project project, @NotNull TextFieldWithBrowseButton fileField) {
-    installFileChooser(project, fileField, false, false, new Condition<VirtualFile>() {
-      @Override
-      public boolean value(VirtualFile file) {
-        if (file.getFileType() != GoFileType.INSTANCE) {
-          return false;
-        }
-        PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
-        return isMainGoFile(psiFile);
+  public static void installGoWithMainFileChooser(Project project, @NotNull TextFieldWithBrowseButton fileField) {
+    installFileChooser(project, fileField, false, false, file -> {
+      if (file.getFileType() != GoFileType.INSTANCE) {
+        return false;
       }
+      return isMainGoFile(PsiManager.getInstance(project).findFile(file));
     });
   }
 
+  @Contract("null -> false")
   public static boolean isMainGoFile(@Nullable PsiFile psiFile) {
-    if (psiFile != null && psiFile instanceof GoFile) {
+    if (!GoTestFinder.isTestFile(psiFile) && psiFile instanceof GoFile) {
       return GoConstants.MAIN.equals(((GoFile)psiFile).getPackageName()) && ((GoFile)psiFile).hasMainFunction();
     }
     return false;
@@ -136,5 +140,11 @@ public class GoRunUtil {
                                                                                                       chooseDirectoryDescriptor,
                                                                                                       TextComponentAccessor.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT));
     }
+  }
+
+  public static void printGoEnvVariables(@NotNull GeneralCommandLine commandLine, @NotNull ProcessHandler handler) {
+    Map<String, String> environment = commandLine.getEnvironment();
+    handler.notifyTextAvailable("GOROOT=" + StringUtil.nullize(environment.get(GoConstants.GO_ROOT)) + '\n', ProcessOutputTypes.SYSTEM);
+    handler.notifyTextAvailable("GOPATH=" + StringUtil.nullize(environment.get(GoConstants.GO_PATH)) + '\n', ProcessOutputTypes.SYSTEM);
   }
 }

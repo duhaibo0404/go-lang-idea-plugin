@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFileManager;
-import com.intellij.util.Consumer;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nullable;
@@ -55,7 +54,7 @@ public class GoBeforeRunTaskProvider extends BeforeRunTaskProvider<GoCommandBefo
 
   @Override
   public String getDescription(GoCommandBeforeRunTask task) {
-    return "Run `" + task.toString() + "`";
+    return "Run `" + task + "`";
   }
 
   @Nullable
@@ -119,16 +118,17 @@ public class GoBeforeRunTaskProvider extends BeforeRunTaskProvider<GoCommandBefo
   public boolean executeTask(DataContext context,
                              RunConfiguration configuration,
                              ExecutionEnvironment env,
-                             final GoCommandBeforeRunTask task) {
-    final Semaphore done = new Semaphore();
-    final Ref<Boolean> result = new Ref<Boolean>(false);
+                             GoCommandBeforeRunTask task) {
+    Semaphore done = new Semaphore();
+    Ref<Boolean> result = Ref.create(false);
 
     GoRunConfigurationBase goRunConfiguration = (GoRunConfigurationBase)configuration;
-    final Module module = goRunConfiguration.getConfigurationModule().getModule();
-    final Project project = configuration.getProject();
-    final String workingDirectory = goRunConfiguration.getWorkingDirectory();
+    Module module = goRunConfiguration.getConfigurationModule().getModule();
+    Project project = configuration.getProject();
+    String workingDirectory = goRunConfiguration.getWorkingDirectory();
 
     UIUtil.invokeAndWaitIfNeeded(new Runnable() {
+      @Override
       public void run() {
         if (StringUtil.isEmpty(task.getCommand())) return;
         if (project == null || project.isDisposed()) return;
@@ -139,8 +139,8 @@ public class GoBeforeRunTaskProvider extends BeforeRunTaskProvider<GoCommandBefo
         GoExecutor.in(module).withParameterString(task.getCommand())
           .withWorkDirectory(workingDirectory)
           .showOutputOnError()
-          .showNotifications(false)
-          .withPresentableName("Executing `" + task.toString() + "`")
+          .showNotifications(false, true)
+          .withPresentableName("Executing `" + task + "`")
           .withProcessListener(new ProcessAdapter() {
             @Override
             public void processTerminated(ProcessEvent event) {
@@ -148,12 +148,7 @@ public class GoBeforeRunTaskProvider extends BeforeRunTaskProvider<GoCommandBefo
               result.set(event.getExitCode() == 0);
             }
           })
-          .executeWithProgress(false, new Consumer<Boolean>() {
-            @Override
-            public void consume(Boolean result) {
-              VirtualFileManager.getInstance().asyncRefresh(null);
-            }
-          });
+          .executeWithProgress(false, result1 -> VirtualFileManager.getInstance().asyncRefresh(null));
       }
     });
 

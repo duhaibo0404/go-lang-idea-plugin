@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package com.goide.coverage;
 
 import com.goide.GoCodeInsightFixtureTestCase;
-import com.goide.project.GoModuleLibrariesService;
 import com.goide.runconfig.testing.coverage.GoCoverageAnnotator;
 import com.goide.runconfig.testing.coverage.GoCoverageProjectData;
 import com.goide.runconfig.testing.coverage.GoCoverageRunner;
@@ -30,12 +29,6 @@ import java.io.FileReader;
 import java.io.IOException;
 
 public class GoCoverageCalculationTest extends GoCodeInsightFixtureTestCase {
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    GoModuleLibrariesService.getInstance(myModule).setLibraryRootUrls(getRoot().getUrl());
-  }
-
   public void testCoverage() throws IOException {
     assertEquals("75% statements", annotate().getFileCoverageInformationString(myFixture.findFileInTempDir(file())));
   }
@@ -102,14 +95,10 @@ public class GoCoverageCalculationTest extends GoCodeInsightFixtureTestCase {
 
   @NotNull
   private GoCoverageProjectData parseData(@NotNull String coverageSource) throws IOException {
-    BufferedReader reader = new BufferedReader(new FileReader(new File(getTestDataPath(), coverageSource)));
-    try {
+    try (BufferedReader reader = new BufferedReader(new FileReader(new File(getTestDataPath(), coverageSource)))) {
       GoCoverageProjectData data = GoCoverageRunner.parseCoverage(reader, myFixture.getProject(), myModule);
       assertNotNull(data);
       return data;
-    }
-    finally {
-      reader.close();
     }
   }
 
@@ -118,6 +107,7 @@ public class GoCoverageCalculationTest extends GoCodeInsightFixtureTestCase {
     return getTestName(true) + ".go";
   }
 
+  @Override
   @NotNull
   protected String getBasePath() {
     return "coverage";
@@ -125,6 +115,8 @@ public class GoCoverageCalculationTest extends GoCodeInsightFixtureTestCase {
 
   @NotNull
   private VirtualFile getRoot() {
-    return myFixture.getTempDirFixture().getFile("");
+    VirtualFile root = myFixture.getTempDirFixture().getFile("");
+    assertNotNull(root);
+    return root;
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,10 @@
 package com.goide.inspections.unresolved;
 
 import com.goide.inspections.GoInspectionBase;
-import com.goide.inspections.GoRenameToBlankQuickFix;
 import com.goide.psi.*;
 import com.goide.psi.impl.GoVarProcessor;
+import com.goide.quickfix.GoDeleteVarDefinitionQuickFix;
+import com.goide.quickfix.GoRenameToBlankQuickFix;
 import com.intellij.codeInspection.LocalInspectionToolSession;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ProblemsHolder;
@@ -28,59 +29,61 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiReference;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.util.Query;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public class GoUnusedVariableInspection extends GoInspectionBase {
   @NotNull
   @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder,
-                                     @SuppressWarnings({"UnusedParameters", "For future"}) @NotNull LocalInspectionToolSession session) {
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
     return new GoVisitor() {
       @Override
       public void visitVarDefinition(@NotNull GoVarDefinition o) {
         if (o.isBlank()) return;
         GoCompositeElement varSpec = PsiTreeUtil.getParentOfType(o, GoVarSpec.class, GoTypeSwitchGuard.class);
         GoVarDeclaration decl = PsiTreeUtil.getParentOfType(o, GoVarDeclaration.class);
-        if (varSpec != null || decl != null) {
+        if (shouldValidate(decl) && (varSpec != null || decl != null)) {
           PsiReference reference = o.getReference();
           PsiElement resolve = reference != null ? reference.resolve() : null;
           if (resolve != null) return;
-          Query<PsiReference> query = ReferencesSearch.search(o, o.getUseScope());
-          for (PsiReference ref : query) {
+          boolean foundReference = !ReferencesSearch.search(o, o.getUseScope()).forEach(reference1 -> {
             ProgressManager.checkCanceled();
-            PsiElement element = ref.getElement();
-            if (element == null) continue;
+            PsiElement element = reference1.getElement();
+            if (element == null) return true;
             PsiElement parent = element.getParent();
             if (parent instanceof GoLeftHandExprList) {
               PsiElement grandParent = parent.getParent();
-              if (grandParent instanceof GoAssignmentStatement && ((GoAssignmentStatement)grandParent).getAssignOp().getAssign() != null) {
+              if (grandParent instanceof GoAssignmentStatement &&
+                  ((GoAssignmentStatement)grandParent).getAssignOp().getAssign() != null) {
                 GoFunctionLit fn = PsiTreeUtil.getParentOfType(element, GoFunctionLit.class);
-                if (fn == null || !PsiTreeUtil.isAncestor(GoVarProcessor.getScope(o), fn, true)) continue;
+                if (fn == null || !PsiTreeUtil.isAncestor(GoVarProcessor.getScope(o), fn, true)) {
+                  return true;
+                }
               }
             }
             if (parent instanceof GoShortVarDeclaration) {
               int op = ((GoShortVarDeclaration)parent).getVarAssign().getStartOffsetInParent();
-              if (element.getStartOffsetInParent() < op) continue;
+              if (element.getStartOffsetInParent() < op) {
+                return true;
+              }
             }
-            return;
-          }
-          boolean globalVar = decl != null && decl.getParent() instanceof GoFile;
-          if (globalVar) {
-            if (!checkGlobal()) return;
-            holder.registerProblem(o, "Unused variable " + "'" + o.getName() + "'", ProblemHighlightType.LIKE_UNUSED_SYMBOL);
-          }
-          else {
-            if (checkGlobal()) return;
-            holder.registerProblem(o, "Unused variable " + "'" + o.getName() + "'", ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
-                                   new GoRenameToBlankQuickFix(o));
+            return false;
+          });
+
+          if (!foundReference) {
+            reportError(o, holder);
           }
         }
       }
     };
   }
 
-  protected boolean checkGlobal() {
-    return false;
+  protected void reportError(@NotNull GoVarDefinition varDefinition, @NotNull ProblemsHolder holder) {
+    holder.registerProblem(varDefinition, "Unused variable <code>#ref</code> #loc", ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
+                           new GoRenameToBlankQuickFix(varDefinition), new GoDeleteVarDefinitionQuickFix(varDefinition.getName()));
+  }
+
+  protected boolean shouldValidate(@Nullable GoVarDeclaration varDeclaration) {
+    return varDeclaration == null || !(varDeclaration.getParent() instanceof GoFile);
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import org.jetbrains.jsonProtocol.Request;
 import java.io.IOException;
 
 public class DlvVm extends VmBase {
-  final static Logger LOG = Logger.getInstance(DlvVm.class);
+  private final static Logger LOG = Logger.getInstance(DlvVm.class);
 
   @NotNull private final DlvCommandProcessor commandProcessor;
   @NotNull private final StandaloneVmHelper vmHelper;
@@ -49,9 +49,7 @@ public class DlvVm extends VmBase {
         return vmHelper.write(content);
       }
     };
-
-    vmHelper = new StandaloneVmHelper(this, commandProcessor);
-    vmHelper.setChannel(channel);
+    vmHelper = new StandaloneVmHelper(this, commandProcessor, channel);
 
     channel.pipeline().addLast(new JsonObjectDecoder(), new SimpleChannelInboundHandlerAdapter() {
       @Override
@@ -89,10 +87,15 @@ public class DlvVm extends VmBase {
     return breakpointManager;
   }
 
+  /**
+   * Changed API between minor versions, runtime is compatible
+   * Todo: uncomment since 2016.2, when only the last build of 15.0 will be supported
+   */
+  @SuppressWarnings("unchecked")
   @NotNull
   @Override
-  public SuspendContextManagerBase<SuspendContextBase, CallFrame> getSuspendContextManager() {
-    return new SuspendContextManagerBase<SuspendContextBase, CallFrame>() {
+  public SuspendContextManagerBase getSuspendContextManager() {
+    return new SuspendContextManagerBase() {
       @NotNull
       @Override
       public Promise<Void> continueVm(@NotNull StepAction stepAction, int stepCount) {

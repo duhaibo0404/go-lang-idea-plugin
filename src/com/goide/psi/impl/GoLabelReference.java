@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,7 @@
 
 package com.goide.psi.impl;
 
-import com.goide.psi.GoBlock;
-import com.goide.psi.GoLabelDefinition;
-import com.goide.psi.GoLabelRef;
+import com.goide.psi.*;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.ResolveState;
 import com.intellij.psi.util.PsiTreeUtil;
@@ -31,7 +29,7 @@ public class GoLabelReference extends GoCachedReference<GoLabelRef> {
   private final GoScopeProcessorBase myProcessor = new GoScopeProcessorBase(myElement) {
     @Override
     protected boolean crossOff(@NotNull PsiElement e) {
-      return !(e instanceof GoLabelDefinition);
+      return !(e instanceof GoLabelDefinition) || ((GoLabelDefinition)e).isBlank();
     }
   };
 
@@ -41,7 +39,9 @@ public class GoLabelReference extends GoCachedReference<GoLabelRef> {
 
   @NotNull
   private Collection<GoLabelDefinition> getLabelDefinitions() {
-    return PsiTreeUtil.findChildrenOfType(PsiTreeUtil.getTopmostParentOfType(myElement, GoBlock.class), GoLabelDefinition.class);
+    GoFunctionLit functionLit = PsiTreeUtil.getParentOfType(myElement, GoFunctionLit.class);
+    PsiElement blockToSearch = functionLit != null ? functionLit.getBlock() : PsiTreeUtil.getTopmostParentOfType(myElement, GoBlock.class); 
+    return PsiTreeUtil.findChildrenOfType(blockToSearch, GoLabelDefinition.class);
   }
 
   @Nullable
@@ -52,11 +52,34 @@ public class GoLabelReference extends GoCachedReference<GoLabelRef> {
 
   @Override
   public boolean processResolveVariants(@NotNull GoScopeProcessor processor) {
+    GoBreakStatement breakStatement = PsiTreeUtil.getParentOfType(myElement, GoBreakStatement.class);
+    if (breakStatement != null) {
+      return processDefinitionsForBreakReference(breakStatement, processor);
+    }
+    return processAllDefinitions(processor);
+  }
+
+  private boolean processAllDefinitions(@NotNull GoScopeProcessor processor) {
     Collection<GoLabelDefinition> defs = getLabelDefinitions();
     for (GoLabelDefinition def : defs) {
       if (!processor.execute(def, ResolveState.initial())) {
         return false;
       }
+    }
+    return true;
+  }
+
+  private static boolean processDefinitionsForBreakReference(@NotNull GoBreakStatement breakStatement,
+                                                             @NotNull GoScopeProcessor processor) {
+    PsiElement breakStatementOwner = GoPsiImplUtil.getBreakStatementOwner(breakStatement);
+    while (breakStatementOwner != null) {
+      PsiElement parent = breakStatementOwner.getParent();
+      if (parent instanceof GoLabeledStatement) {
+        if (!processor.execute(((GoLabeledStatement)parent).getLabelDefinition(), ResolveState.initial())) {
+          return false;
+        }
+      }
+      breakStatementOwner = GoPsiImplUtil.getBreakStatementOwner(breakStatementOwner);
     }
     return true;
   }

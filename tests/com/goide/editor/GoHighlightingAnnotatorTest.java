@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@
 package com.goide.editor;
 
 import com.goide.GoCodeInsightFixtureTestCase;
+import com.goide.SdkAware;
 import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.annotations.NotNull;
 
+@SdkAware
 @TestDataPath("$PROJECT_ROOT/testData/colorHighlighting")
 public class GoHighlightingAnnotatorTest extends GoCodeInsightFixtureTestCase {
-  
+
   public void testSimple() {
     doTest();
   }
@@ -30,18 +32,29 @@ public class GoHighlightingAnnotatorTest extends GoCodeInsightFixtureTestCase {
   public void testLabel() {
     doTest();
   }
-  
+
   public void testReceiver() {
     doTest();
   }
-  
+
   public void testFuncAndMethod() {
     doTest();
   }
 
-  @Override
-  protected boolean isWriteActionRequired() {
-    return false;
+  public void testOctAndHex() {
+    doTest();
+  }
+
+  public void testTypes() {
+    doTest();
+  }
+
+  public void testStructFields() {
+    doTest();
+  }
+
+  public void testBuiltinFunctions() {
+    doTest();
   }
 
   private void doTest() {

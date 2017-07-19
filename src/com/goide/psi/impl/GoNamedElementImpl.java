@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,13 @@
 package com.goide.psi.impl;
 
 import com.goide.GoIcons;
+import com.goide.project.GoVendoringUtil;
 import com.goide.psi.*;
-import com.goide.sdk.GoSdkUtil;
+import com.goide.sdk.GoPackageUtil;
 import com.goide.stubs.GoNamedStub;
-import com.goide.stubs.GoTypeStub;
 import com.goide.util.GoUtil;
 import com.intellij.lang.ASTNode;
 import com.intellij.navigation.ItemPresentation;
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.text.StringUtil;
@@ -32,6 +31,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.ResolveState;
 import com.intellij.psi.impl.ElementBase;
 import com.intellij.psi.scope.PsiScopeProcessor;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.stubs.IStubElementType;
@@ -60,6 +60,7 @@ public abstract class GoNamedElementImpl<T extends GoNamedStub<?>> extends GoStu
     super(node);
   }
 
+  @Override
   public boolean isPublic() {
     if (GoPsiImplUtil.builtin(this)) return true;
     T stub = getStub();
@@ -89,7 +90,7 @@ public abstract class GoNamedElementImpl<T extends GoNamedStub<?>> extends GoStu
     String name = getName();
     if (name == null) return null;
     String packageName = getContainingFile().getPackageName();
-    return StringUtil.isNotEmpty(packageName) ? packageName + "." + name : name;
+    return GoPsiImplUtil.getFqn(packageName, name);
   }
 
   @Override
@@ -112,13 +113,10 @@ public abstract class GoNamedElementImpl<T extends GoNamedStub<?>> extends GoStu
   @Override
   public GoType getGoType(@Nullable ResolveState context) {
     if (context != null) return getGoTypeInner(context);
-    return CachedValuesManager.getCachedValue(this, new CachedValueProvider<GoType>() {
-      @Nullable
-      @Override
-      public Result<GoType> compute() {
-        return Result.create(getGoTypeInner(null), PsiModificationTracker.MODIFICATION_COUNT);
-      }
-    });
+    return CachedValuesManager.getCachedValue(this,
+                                              () -> CachedValueProvider.Result
+                                                .create(getGoTypeInner(GoPsiImplUtil.createContextOnElement(this)),
+                                                        PsiModificationTracker.MODIFICATION_COUNT));
   }
 
   @Nullable
@@ -131,11 +129,7 @@ public abstract class GoNamedElementImpl<T extends GoNamedStub<?>> extends GoStu
   public GoType findSiblingType() {
     T stub = getStub();
     if (stub != null) {
-      PsiElement parent = getParentByStub();
-      // todo: cast is weird
-      return parent instanceof GoStubbedElementImpl ?
-             (GoType)((GoStubbedElementImpl)parent).findChildByClass(GoType.class, GoTypeStub.class) :
-             null;
+      return GoPsiTreeUtil.getStubChildOfType(getParentByStub(), GoType.class);
     }
     return PsiTreeUtil.getNextSiblingOfType(this, GoType.class);
   }
@@ -152,6 +146,7 @@ public abstract class GoNamedElementImpl<T extends GoNamedStub<?>> extends GoStu
   public ItemPresentation getPresentation() {
     String text = UsageViewUtil.createNodeText(this);
     if (text != null) {
+      boolean vendoringEnabled = GoVendoringUtil.isVendoringEnabled(ModuleUtilCore.findModuleForPsiElement(getContainingFile()));
       return new ItemPresentation() {
         @Nullable
         @Override
@@ -164,7 +159,7 @@ public abstract class GoNamedElementImpl<T extends GoNamedStub<?>> extends GoStu
         public String getLocationString() {
           GoFile file = getContainingFile();
           String fileName = file.getName();
-          String importPath = ObjectUtils.chooseNotNull(GoSdkUtil.getImportPath(file.getContainingDirectory()), file.getPackageName());
+          String importPath = ObjectUtils.chooseNotNull(file.getImportPath(vendoringEnabled), file.getPackageName());
           return "in " + (importPath != null ? importPath  + "/" + fileName : fileName);
         }
 
@@ -205,18 +200,28 @@ public abstract class GoNamedElementImpl<T extends GoNamedStub<?>> extends GoStu
 
   @NotNull
   @Override
+  public GlobalSearchScope getResolveScope() {
+    return isPublic() ? GoUtil.goPathResolveScope(this) : GoPackageUtil.packageScope(getContainingFile());
+  }
+
+  @NotNull
+  @Override
   public SearchScope getUseScope() {
-    if (isPublic()) {
-      Module module = ModuleUtilCore.findModuleForPsiElement(this);
-      return module != null ? GoUtil.moduleScope(getProject(), module) : super.getUseScope();
+    if (this instanceof GoVarDefinition || this instanceof GoConstDefinition || this instanceof GoLabelDefinition) {
+      GoBlock block = PsiTreeUtil.getParentOfType(this, GoBlock.class);
+      if (block != null) return new LocalSearchScope(block);
     }
-    else {
-      if (this instanceof GoVarDefinition || this instanceof GoConstDefinition) {
-        GoBlock block = PsiTreeUtil.getParentOfType(this, GoBlock.class);
-        if (block != null) return new LocalSearchScope(block);
+    if (!isPublic()) {
+      return GoPackageUtil.packageScope(getContainingFile());
+    }
+    GoSpecType parentType = PsiTreeUtil.getStubOrPsiParentOfType(this, GoSpecType.class);
+    if (parentType != null) {
+      GoTypeSpec typeSpec = GoPsiImplUtil.getTypeSpecSafe(parentType);
+      if (typeSpec != null && !StringUtil.isCapitalized(typeSpec.getName())) {
+        return GoPackageUtil.packageScope(getContainingFile());
       }
-      return GoPsiImplUtil.packageScope(getContainingFile());
     }
+    return GoUtil.goPathUseScope(this, !(this instanceof GoMethodDeclaration));
   }
 
   @Override

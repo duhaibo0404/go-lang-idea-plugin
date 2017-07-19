@@ -5582,10 +5582,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('u')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('U')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('U')
       PsiElement())(')')
     PsiElement(identifier)('Child')
     SIGNATURE
@@ -6637,10 +6638,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('u')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('UArr')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('UArr')
       PsiElement())(')')
     PsiElement(identifier)('Child')
     SIGNATURE
@@ -6967,10 +6969,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('u')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('UArrPtr')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('UArrPtr')
       PsiElement())(')')
     PsiElement(identifier)('Child')
     SIGNATURE
@@ -7762,8 +7765,8 @@ GO_FILE
                 BUILTIN_CALL_EXPR
                   REFERENCE_EXPRESSION
                     PsiElement(identifier)('make')
-                  PsiElement(()('(')
-                  BUILTIN_ARGS
+                  BUILTIN_ARGUMENT_LIST
+                    PsiElement(()('(')
                     CHANNEL_TYPE
                       PsiElement(chan)('chan')
                       TYPE
@@ -7778,8 +7781,8 @@ GO_FILE
                         BUILTIN_CALL_EXPR
                           REFERENCE_EXPRESSION
                             PsiElement(identifier)('make')
-                          PsiElement(()('(')
-                          BUILTIN_ARGS
+                          BUILTIN_ARGUMENT_LIST
+                            PsiElement(()('(')
                             CHANNEL_TYPE
                               PsiElement(chan)('chan')
                               TYPE
@@ -7794,8 +7797,8 @@ GO_FILE
                                 BUILTIN_CALL_EXPR
                                   REFERENCE_EXPRESSION
                                     PsiElement(identifier)('make')
-                                  PsiElement(()('(')
-                                  BUILTIN_ARGS
+                                  BUILTIN_ARGUMENT_LIST
+                                    PsiElement(()('(')
                                     CHANNEL_TYPE
                                       PsiElement(chan)('chan')
                                       TYPE
@@ -7810,8 +7813,8 @@ GO_FILE
                                         BUILTIN_CALL_EXPR
                                           REFERENCE_EXPRESSION
                                             PsiElement(identifier)('make')
-                                          PsiElement(()('(')
-                                          BUILTIN_ARGS
+                                          BUILTIN_ARGUMENT_LIST
+                                            PsiElement(()('(')
                                             CHANNEL_TYPE
                                               PsiElement(chan)('chan')
                                               TYPE
@@ -7826,22 +7829,22 @@ GO_FILE
                                                 BUILTIN_CALL_EXPR
                                                   REFERENCE_EXPRESSION
                                                     PsiElement(identifier)('make')
-                                                  PsiElement(()('(')
-                                                  BUILTIN_ARGS
+                                                  BUILTIN_ARGUMENT_LIST
+                                                    PsiElement(()('(')
                                                     CHANNEL_TYPE
                                                       PsiElement(chan)('chan')
                                                       TYPE
                                                         TYPE_REFERENCE_EXPRESSION
                                                           PsiElement(identifier)('int')
-                                                  PsiElement())(')')
+                                                    PsiElement())(')')
                                                 PsiElement())(')')
-                                          PsiElement())(')')
+                                            PsiElement())(')')
                                         PsiElement())(')')
-                                  PsiElement())(')')
+                                    PsiElement())(')')
                                 PsiElement())(')')
-                          PsiElement())(')')
+                            PsiElement())(')')
                         PsiElement())(')')
-                  PsiElement())(')')
+                    PsiElement())(')')
           PsiElement(:)(':')
         COMM_CLAUSE
           COMM_CASE

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import static com.intellij.codeInspection.ProblemHighlightType.GENERIC_ERROR_OR_
 public class GoAssignmentNilWithoutExplicitTypeInspection extends GoInspectionBase {
   @NotNull
   @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
     return new GoVisitor() {
       @Override
       public void visitVarDeclaration(@NotNull GoVarDeclaration o) {
@@ -55,7 +55,7 @@ public class GoAssignmentNilWithoutExplicitTypeInspection extends GoInspectionBa
 
       private void checkVar(@NotNull GoVarSpec spec) {
         if (spec.getType() != null) return;
-        checkExpressions(spec.getExpressionList());
+        checkExpressions(spec.getRightExpressionsList());
       }
 
       private void checkConst(@NotNull GoConstSpec spec) {
@@ -67,7 +67,7 @@ public class GoAssignmentNilWithoutExplicitTypeInspection extends GoInspectionBa
         for (GoExpression expr : expressions) {
           if (expr instanceof GoReferenceExpressionImpl) {
             GoReferenceExpressionImpl ref = (GoReferenceExpressionImpl)expr;
-            PsiElement resolve = ref.getReference().resolve();
+            PsiElement resolve = ref.resolve();
             if (ref.getIdentifier().textMatches(GoConstants.NIL) && resolve != null && GoPsiImplUtil.builtin(resolve)) {
               holder.registerProblem(expr, "Cannot assign nil without explicit type", GENERIC_ERROR_OR_WARNING);
             }

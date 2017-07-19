@@ -20,8 +20,8 @@ func (v *Vertex) Abs() float64 {
 type T struct {
 	a int
 }
-func (tv  T) Mv(a int) int { return 0 }  // value receiver
-func (tp *T) Mp(f float32) float32 { return 1 }  // pointer receiver
+func (tv  T) Mv(int) int { return 0 }  // value receiver
+func (tp *T) Mp(float32) float32 { return 1 }  // pointer receiver
 
 var t T
 
@@ -31,8 +31,8 @@ func _() {
 	(T).Mv(t, 7)
 	f1 := T.Mv; f1(t, 7)
 	f2 := (T).Mv; f2(t, 7)
-	fmt.Println((*T).Mp)
-	fmt.Println((*T).Mv)
+	fmt.Println((*T).Mp())
+	fmt.Println((*T).Mv())
 }
 
 type Type interface {
@@ -43,8 +43,12 @@ type ArrayType struct {
     Type Type
 }
 
+func (t ArrayType) Size() int64 {
+	return 1
+}
+
 func _(t *Type) {
     at, _ := (*t).(*ArrayType)
     println(at.Type)
-    println(at.Type.Size)
+    println(at.Type.Size())
 }

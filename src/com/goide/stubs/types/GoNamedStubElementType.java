@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,10 +40,12 @@ public abstract class GoNamedStubElementType<S extends GoNamedStub<T>, T extends
 
   @Override
   public boolean shouldCreateStub(@NotNull ASTNode node) {
+    if (!super.shouldCreateStub(node)) return false;
     PsiElement psi = node.getPsi();
-    return super.shouldCreateStub(node) && psi instanceof GoNamedElement && StringUtil.isNotEmpty(((GoNamedElement)psi).getName());
+    return psi instanceof GoNamedElement && StringUtil.isNotEmpty(((GoNamedElement)psi).getName());
   }
 
+  @Override
   public void indexStub(@NotNull S stub, @NotNull IndexSink sink) {
     String name = stub.getName();
     if (shouldIndex() && StringUtil.isNotEmpty(name)) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,10 @@
 
 package com.goide.runconfig.testing.frameworks.gocheck;
 
-import com.goide.psi.GoFunctionDeclaration;
 import com.goide.psi.GoFunctionOrMethodDeclaration;
 import com.goide.psi.GoMethodDeclaration;
 import com.goide.runconfig.testing.GoTestRunConfigurationProducerBase;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 
 public class GocheckRunConfigurationProducer extends GoTestRunConfigurationProducerBase implements Cloneable {
   public GocheckRunConfigurationProducer() {
@@ -39,13 +36,8 @@ public class GocheckRunConfigurationProducer extends GoTestRunConfigurationProdu
   @Override
   protected String getFunctionConfigurationName(@NotNull GoFunctionOrMethodDeclaration function, @NotNull String fileName) {
     return function instanceof GoMethodDeclaration
-           ? "gocheck " + GocheckFramework.getGocheckTestName((GoMethodDeclaration)function)
+           ? GocheckFramework.getGocheckTestName((GoMethodDeclaration)function) + " in " + fileName
            : super.getFunctionConfigurationName(function, fileName);
-  }
-
-  @Override
-  protected boolean shouldSkipContext(@Nullable GoFunctionOrMethodDeclaration context) {
-    return context != null && context instanceof GoFunctionDeclaration;
   }
 
   @NotNull

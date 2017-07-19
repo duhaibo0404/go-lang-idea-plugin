@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,7 +71,9 @@ public abstract class GoRunConfigurationBase<RunningState extends GoRunningState
     }
 
     if (module != null) {
-      myWorkingDirectory = StringUtil.trimEnd(PathUtil.getParentPath(module.getModuleFilePath()), ".idea");
+      if (FileUtil.exists(module.getModuleFilePath())) {
+        myWorkingDirectory = StringUtil.trimEnd(PathUtil.getParentPath(module.getModuleFilePath()), ".idea");
+      }
     }
     else {
       myWorkingDirectory = StringUtil.notNullize(configurationModule.getProject().getBasePath());
@@ -115,20 +117,20 @@ public abstract class GoRunConfigurationBase<RunningState extends GoRunningState
   public void writeExternal(Element element) throws WriteExternalException {
     super.writeExternal(element);
     writeModule(element);
-    if (StringUtil.isNotEmpty(myWorkingDirectory)) {
-      JDOMExternalizerUtil.addElementWithValueAttribute(element, WORKING_DIRECTORY_NAME, myWorkingDirectory);
-    }
-    if (StringUtil.isNotEmpty(myGoParams)) {
-      JDOMExternalizerUtil.addElementWithValueAttribute(element, GO_PARAMETERS_NAME, myGoParams);
-    }
-    if (StringUtil.isNotEmpty(myParams)) {
-      JDOMExternalizerUtil.addElementWithValueAttribute(element, PARAMETERS_NAME, myParams);
-    }
+    addNonEmptyElement(element, WORKING_DIRECTORY_NAME, myWorkingDirectory);
+    addNonEmptyElement(element, GO_PARAMETERS_NAME, myGoParams);
+    addNonEmptyElement(element, PARAMETERS_NAME, myParams);
     if (!myCustomEnvironment.isEmpty()) {
       EnvironmentVariablesComponent.writeExternal(element, myCustomEnvironment);
     }
     if (!myPassParentEnvironment) {
       JDOMExternalizerUtil.addElementWithValueAttribute(element, PASS_PARENT_ENV, "false");
+    }
+  }
+
+  protected void addNonEmptyElement(@NotNull Element element, @NotNull String attributeName, @Nullable String value) {
+    if (StringUtil.isNotEmpty(value)) {
+      JDOMExternalizerUtil.addElementWithValueAttribute(element, attributeName, value);
     }
   }
 
@@ -150,7 +152,7 @@ public abstract class GoRunConfigurationBase<RunningState extends GoRunningState
   }
 
   @NotNull
-  public final RunningState createRunningState(ExecutionEnvironment env) throws ExecutionException {
+  private RunningState createRunningState(ExecutionEnvironment env) throws ExecutionException {
     GoModuleBasedConfiguration configuration = getConfigurationModule();
     Module module = configuration.getModule();
     if (module == null) {

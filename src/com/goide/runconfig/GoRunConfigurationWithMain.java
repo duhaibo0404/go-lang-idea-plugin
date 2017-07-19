@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,9 +49,7 @@ public abstract class GoRunConfigurationWithMain<T extends GoRunningState> exten
   @Override
   public void writeExternal(Element element) throws WriteExternalException {
     super.writeExternal(element);
-    if (StringUtil.isNotEmpty(myFilePath)) {
-      JDOMExternalizerUtil.addElementWithValueAttribute(element, FILE_PATH_ATTRIBUTE_NAME, myFilePath);
-    }
+    addNonEmptyElement(element, FILE_PATH_ATTRIBUTE_NAME, myFilePath);
   }
 
   protected void checkFileConfiguration() throws RuntimeConfigurationError {
@@ -60,7 +58,7 @@ public abstract class GoRunConfigurationWithMain<T extends GoRunningState> exten
       throw new RuntimeConfigurationError("Main file is not specified");
     }
     PsiFile psiFile = PsiManager.getInstance(getProject()).findFile(file);
-    if (psiFile == null || !(psiFile instanceof GoFile)) {
+    if (!(psiFile instanceof GoFile)) {
       throw new RuntimeConfigurationError("Main file is invalid");
     }
     if (!GoRunUtil.isMainGoFile(psiFile)) {

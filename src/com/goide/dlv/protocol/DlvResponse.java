@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import com.goide.dlv.JsonReaderEx;
 import com.google.gson.stream.JsonToken;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.jsonProtocol.JsonOptionalField;
 import org.jetbrains.jsonProtocol.JsonType;
+import org.jetbrains.jsonProtocol.Optional;
 
 import java.util.Collections;
 import java.util.List;
@@ -31,11 +31,11 @@ public interface DlvResponse {
   int id();
 
   @Nullable
-  @JsonOptionalField
+  @Optional
   JsonReaderEx result();
 
   @Nullable
-  @JsonOptionalField
+  @Optional
   ErrorInfo error();
 
   @JsonType
@@ -44,7 +44,7 @@ public interface DlvResponse {
     String message();
 
     @NotNull
-    @JsonOptionalField
+    @Optional
     List<String> data();
 
     int code();
@@ -104,9 +104,9 @@ public interface DlvResponse {
   }
 
   final class M5m implements DlvResponse.ErrorInfo {
-    private int _code = -1;
-    @NotNull private List<String> _data = Collections.emptyList();
-    @Nullable private String _message;
+    private static final int _code = -1;
+    @NotNull private final List<String> _data = Collections.emptyList();
+    @Nullable private final String _message;
 
     M5m(@NotNull JsonReaderEx reader) {
       _message = nextNullableString(reader);

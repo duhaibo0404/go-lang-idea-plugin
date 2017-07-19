@@ -9,34 +9,44 @@ GO_FILE
       PsiElement(()('(')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"bytes"')
+          STRING_LITERAL
+            PsiElement(string)('"bytes"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"encoding/json"')
+          STRING_LITERAL
+            PsiElement(string)('"encoding/json"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"errors"')
+          STRING_LITERAL
+            PsiElement(string)('"errors"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"fmt"')
+          STRING_LITERAL
+            PsiElement(string)('"fmt"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"io"')
+          STRING_LITERAL
+            PsiElement(string)('"io"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"net"')
+          STRING_LITERAL
+            PsiElement(string)('"net"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"net/textproto"')
+          STRING_LITERAL
+            PsiElement(string)('"net/textproto"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"strings"')
+          STRING_LITERAL
+            PsiElement(string)('"strings"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"sync/atomic"')
+          STRING_LITERAL
+            PsiElement(string)('"sync/atomic"')
       IMPORT_SPEC
         IMPORT_STRING
-          PsiElement(string)('"text/template"')
+          STRING_LITERAL
+            PsiElement(string)('"text/template"')
       PsiElement())(')')
   TYPE_DECLARATION
     PsiElement(type)('type')
@@ -48,12 +58,14 @@ GO_FILE
           PsiElement({)('{')
           FIELD_DECLARATION
             ANONYMOUS_FIELD_DEFINITION
-              PsiElement(*)('*')
-              TYPE_REFERENCE_EXPRESSION
-                TYPE_REFERENCE_EXPRESSION
-                  PsiElement(identifier)('textproto')
-                PsiElement(.)('.')
-                PsiElement(identifier)('Conn')
+              POINTER_TYPE
+                PsiElement(*)('*')
+                TYPE
+                  TYPE_REFERENCE_EXPRESSION
+                    TYPE_REFERENCE_EXPRESSION
+                      PsiElement(identifier)('textproto')
+                    PsiElement(.)('.')
+                    PsiElement(identifier)('Conn')
           FIELD_DECLARATION
             FIELD_DEFINITION
               PsiElement(identifier)('netConn')
@@ -174,10 +186,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('s')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('session')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('session')
       PsiElement())(')')
     PsiElement(identifier)('θ_echo')
     SIGNATURE
@@ -282,10 +295,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('s')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('session')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('session')
       PsiElement())(')')
     PsiElement(identifier)('θ_get_server_time')
     SIGNATURE
@@ -383,10 +397,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('s')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('session')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('session')
       PsiElement())(')')
     PsiElement(identifier)('θ_get_server_time')
     SIGNATURE
@@ -484,10 +499,11 @@ GO_FILE
     RECEIVER
       PsiElement(()('(')
       PsiElement(identifier)('s')
-      PsiElement(*)('*')
-      TYPE
-        TYPE_REFERENCE_EXPRESSION
-          PsiElement(identifier)('session')
+      POINTER_TYPE
+        PsiElement(*)('*')
+        TYPE
+          TYPE_REFERENCE_EXPRESSION
+            PsiElement(identifier)('session')
       PsiElement())(')')
     PsiElement(identifier)('θ_debug_ide')
     SIGNATURE
@@ -2518,10 +2534,9 @@ GO_FILE
             LITERAL
               PsiElement(int)('4')
           PsiElement(;)(';')
-          SIMPLE_STATEMENT
-            LEFT_HAND_EXPR_LIST
-              REFERENCE_EXPRESSION
-                PsiElement(identifier)('i')
+          INC_DEC_STATEMENT
+            REFERENCE_EXPRESSION
+              PsiElement(identifier)('i')
             PsiElement(++)('++')
         BLOCK
           PsiElement({)('{')

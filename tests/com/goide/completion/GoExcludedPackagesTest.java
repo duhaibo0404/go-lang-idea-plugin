@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,17 @@
 
 package com.goide.completion;
 
+import com.goide.SdkAware;
 import com.goide.project.GoExcludedPathsSettings;
 import com.intellij.util.ArrayUtil;
 import org.jetbrains.annotations.NotNull;
 
-public class GoExcludedPackagesTest extends GoCompletionSdkAwareTestBase {
+@SdkAware
+public class GoExcludedPackagesTest extends GoCompletionTestBase {
   @Override
   protected void tearDown() throws Exception {
-    try {
-      GoExcludedPathsSettings.getInstance(getProject()).setExcludedPackages(ArrayUtil.EMPTY_STRING_ARRAY);
-    }
-    finally {
-      super.tearDown();
-    }
+    GoExcludedPathsSettings.getInstance(getProject()).setExcludedPackages(ArrayUtil.EMPTY_STRING_ARRAY);
+    super.tearDown();
   }
 
   private void doTestExcluded(@NotNull String initial, @NotNull String after, String... excludedPaths) {
@@ -45,7 +43,7 @@ public class GoExcludedPackagesTest extends GoCompletionSdkAwareTestBase {
 
   public void testExcludedPathSameBeginning() {
     String initial = "package a; func b() {\n fmt.Printl<caret> \n}";
-    String after = "package a;\nimport \"fmt\" func b() {\n fmt.Println(<caret>) \n}";
+    String after = "package a;\n\nimport \"fmt\"\n\nfunc b() {\n fmt.Println(<caret>) \n}";
     doTestExcluded(initial, after, "fm");
   }
 }

@@ -48,7 +48,7 @@ GO_FILE
               PsiElement(identifier)('foo')
             ARGUMENT_LIST
               PsiElement(()('(')
-              PsiErrorElement:')' or <expression> expected, got 'if'
+              PsiErrorElement:'!=', '%', '&', '&^', '(', ')', '*', '+', '++', '-', '--', '/', <, <<, <=, <expression>, <literal type expr>, '==', '>', '>=', '>>', '^' or '|' expected, got 'if'
                 <empty list>
       IF_STATEMENT
         PsiElement(if)('if')
@@ -76,7 +76,7 @@ GO_FILE
               PsiElement(identifier)('bar')
             ARGUMENT_LIST
               PsiElement(()('(')
-              PsiErrorElement:')' or <expression> expected, got ','
+              PsiErrorElement:'!=', '%', '&', '&^', '(', ')', '*', '+', '++', '-', '--', '/', <, <<, <=, <expression>, <literal type expr>, '==', '>', '>=', '>>', '^' or '|' expected, got ','
                 <empty list>
           PsiElement(,)(',')
       PsiElement())(')')
@@ -111,6 +111,27 @@ GO_FILE
           PsiErrorElement:<expression> expected, got '}'
             <empty list>
         PsiElement(})('}')
+      PsiElement(})('}')
+  FUNCTION_DECLARATION
+    PsiElement(func)('func')
+    PsiElement(identifier)('_')
+    SIGNATURE
+      PARAMETERS
+        PsiElement(()('(')
+        PsiElement())(')')
+    BLOCK
+      PsiElement({)('{')
+      SIMPLE_STATEMENT
+        LEFT_HAND_EXPR_LIST
+          COMPOSITE_LIT
+            ARRAY_OR_SLICE_TYPE
+              PsiElement([)('[')
+              PsiElement(])(']')
+              TYPE
+                TYPE_REFERENCE_EXPRESSION
+                  PsiElement(identifier)('string')
+            PsiErrorElement:'!=', '%', '&', '&^', '(', '*', '+', '++', '-', '--', '.', '/', <, <<, <=, '==', '>', '>=', '>>', '^', '{' or '|' expected, got ''
+              <empty list>
       PsiElement(})('}')
   FUNCTION_DECLARATION
     PsiElement(func)('func')
@@ -205,7 +226,7 @@ GO_FILE
             LEFT_HAND_EXPR_LIST
               STRING_LITERAL
                 PsiElement(string)('"DELETE"')
-          PsiErrorElement:'++', ',', '--', ';', <-, <NL>, <assign op> or '}' expected, got ':'
+          PsiErrorElement:',', ';', <-, <NL>, <assign op> or '}' expected, got ':'
             PsiElement(:)(':')
           RETURN_STATEMENT
             PsiElement(return)('return')
@@ -321,7 +342,7 @@ GO_FILE
             LEFT_HAND_EXPR_LIST
               STRING_LITERAL
                 PsiElement(string)('"PUT"')
-          PsiErrorElement:'++', ',', '--', ';', <-, <NL>, <assign op> or '}' expected, got ':'
+          PsiErrorElement:',', ';', <-, <NL>, <assign op> or '}' expected, got ':'
             PsiElement(:)(':')
           RETURN_STATEMENT
             PsiElement(return)('return')
@@ -345,7 +366,7 @@ GO_FILE
             LEFT_HAND_EXPR_LIST
               STRING_LITERAL
                 PsiElement(string)('"DELETE"')
-          PsiErrorElement:'++', ',', '--', ';', <-, <NL>, <assign op> or '}' expected, got ':'
+          PsiErrorElement:',', ';', <-, <NL>, <assign op> or '}' expected, got ':'
             PsiElement(:)(':')
           RETURN_STATEMENT
             PsiElement(return)('return')

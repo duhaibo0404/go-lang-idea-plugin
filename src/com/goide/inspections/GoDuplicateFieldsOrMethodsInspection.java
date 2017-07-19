@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,12 +31,12 @@ import static com.intellij.codeInspection.ProblemHighlightType.GENERIC_ERROR_OR_
 public class GoDuplicateFieldsOrMethodsInspection extends GoInspectionBase {
   @NotNull
   @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder,
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder,
                                      @SuppressWarnings({"UnusedParameters", "For future"}) @NotNull LocalInspectionToolSession session) {
     return new GoVisitor() {
       @Override
-      public void visitStructType(@NotNull final GoStructType type) {
-        final List<GoNamedElement> fields = ContainerUtil.newArrayList();
+      public void visitStructType(@NotNull GoStructType type) {
+        List<GoNamedElement> fields = ContainerUtil.newArrayList();
         type.accept(new GoRecursiveVisitor() {
           @Override
           public void visitFieldDefinition(@NotNull GoFieldDefinition o) {
@@ -72,11 +72,16 @@ public class GoDuplicateFieldsOrMethodsInspection extends GoInspectionBase {
   private static void check(@NotNull List<? extends GoNamedElement> fields, @NotNull ProblemsHolder problemsHolder, @NotNull String what) {
     Set<String> names = ContainerUtil.newHashSet();
     for (GoCompositeElement field : fields) {
+      if (field instanceof GoMethodSpec && ((GoMethodSpec) field).getSignature() == null) {
+        // It's an embedded type, not a method or a field.
+        continue;
+      }
       if (field instanceof GoNamedElement) {
         String name = ((GoNamedElement)field).getName();
         if (names.contains(name)) {
           PsiElement id = ((GoNamedElement)field).getIdentifier();
-          problemsHolder.registerProblem(id != null ? id : field, "Duplicate " + what + " " + "'" + name + "'", GENERIC_ERROR_OR_WARNING);
+          problemsHolder.registerProblem(id != null ? id : field, "Duplicate " + what + " <code>#ref</code> #loc",
+                                         GENERIC_ERROR_OR_WARNING);
         }
         else {
           ContainerUtil.addIfNotNull(names, name);

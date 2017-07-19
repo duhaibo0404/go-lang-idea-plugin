@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,14 @@ package com.goide.editor;
 
 import com.goide.GoTypes;
 import com.goide.psi.*;
-import com.goide.psi.impl.GoPsiImplUtil;
+import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.lang.parameterInfo.*;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.ArrayUtil;
+import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -59,7 +60,7 @@ public class GoParameterInfoHandler implements ParameterInfoHandlerWithTabAction
 
   @NotNull
   @Override
-  public Set<? extends Class> getArgListStopSearchClasses() {
+  public Set<Class> getArgListStopSearchClasses() {
     return ContainerUtil.newHashSet();
   }
 
@@ -103,17 +104,18 @@ public class GoParameterInfoHandler implements ParameterInfoHandlerWithTabAction
   public void showParameterInfo(@NotNull GoArgumentList argList, @NotNull CreateParameterInfoContext context) {
     PsiElement parent = argList.getParent();
     if (!(parent instanceof GoCallExpr)) return;
+    GoFunctionType type = findFunctionType(((GoCallExpr)parent).getExpression().getGoType(null));
+    if (type != null) {
+      context.setItemsToShow(new Object[]{type});
+      context.showHint(argList, argList.getTextRange().getStartOffset(), this);
+    }
+  }
 
-    GoCallExpr call = (GoCallExpr)parent;
-    PsiElement resolve = GoPsiImplUtil.resolveCall(call);
-    if (resolve == null && ((call).getExpression() instanceof GoFunctionLit)) { // todo: move inside resolve call
-      context.setItemsToShow(new Object[]{(call).getExpression()});
-      context.showHint(argList, argList.getTextRange().getStartOffset(), this);
-    }
-    else if (resolve != null) {
-      context.setItemsToShow(new Object[]{resolve});
-      context.showHint(argList, argList.getTextRange().getStartOffset(), this);
-    }
+  @Nullable
+  private static GoFunctionType findFunctionType(@Nullable GoType type) {
+    if (type instanceof GoFunctionType || type == null) return (GoFunctionType)type;
+    GoType base = type.getUnderlyingType();
+    return base instanceof GoFunctionType ? (GoFunctionType)base : null;
   }
 
   @Nullable
@@ -143,7 +145,7 @@ public class GoParameterInfoHandler implements ParameterInfoHandlerWithTabAction
     updatePresentation(p, context);
   }
 
-  String updatePresentation(@Nullable Object p, @NotNull ParameterInfoUIContext context) {
+  static String updatePresentation(@Nullable Object p, @NotNull ParameterInfoUIContext context) {
     if (p == null) {
       context.setUIComponentEnabled(false);
       return null;
@@ -151,28 +153,34 @@ public class GoParameterInfoHandler implements ParameterInfoHandlerWithTabAction
     GoSignature signature = p instanceof GoSignatureOwner ? ((GoSignatureOwner)p).getSignature() : null;
     if (signature == null) return null;
     GoParameters parameters = signature.getParameters();
-    List<String> parametersPresentations = getParameterPresentations(parameters);
-    // Figure out what particular presentation is actually selected. Take in
-    // account possibility of the last variadic parameter.
-    int selected = isLastParameterVariadic(parameters.getParameterDeclarationList())
-                   ? Math.min(context.getCurrentParameterIndex(), parametersPresentations.size() - 1)
-                   : context.getCurrentParameterIndex();
-    // Build the parameter presentation string.
+    List<String> parametersPresentations = getParameterPresentations(parameters, PsiElement::getText);
+    
     StringBuilder builder = new StringBuilder();
     int start = 0;
     int end = 0;
-    for (int i = 0; i < parametersPresentations.size(); ++i) {
-      if (i != 0) {
-        builder.append(", ");
-      }
-      if (i == selected) {
-        start = builder.length();
-      }
-      builder.append(parametersPresentations.get(i));
+    if (!parametersPresentations.isEmpty()) {
+      // Figure out what particular presentation is actually selected. Take in
+      // account possibility of the last variadic parameter.
+      int selected = isLastParameterVariadic(parameters.getParameterDeclarationList())
+                     ? Math.min(context.getCurrentParameterIndex(), parametersPresentations.size() - 1)
+                     : context.getCurrentParameterIndex();
+      
+      for (int i = 0; i < parametersPresentations.size(); ++i) {
+        if (i != 0) {
+          builder.append(", ");
+        }
+        if (i == selected) {
+          start = builder.length();
+        }
+        builder.append(parametersPresentations.get(i));
 
-      if (i == selected) {
-        end = builder.length();
+        if (i == selected) {
+          end = builder.length();
+        }
       }
+    }
+    else {
+      builder.append(CodeInsightBundle.message("parameter.info.no.parameters"));
     }
     return context.setupUIComponentPresentation(builder.toString(), start, end, false, false, false, context.getDefaultParameterColor());
   }
@@ -181,7 +189,8 @@ public class GoParameterInfoHandler implements ParameterInfoHandlerWithTabAction
    * Creates a list of parameter presentations. For clarity we expand parameters declared as `a, b, c int` into `a int, b int, c int`.
    */
   @NotNull
-  public static List<String> getParameterPresentations(@NotNull GoParameters parameters) {
+  public static List<String> getParameterPresentations(@NotNull GoParameters parameters, 
+                                                       @NotNull Function<PsiElement, String> typePresentationFunction) {
     List<GoParameterDeclaration> paramDeclarations = parameters.getParameterDeclarationList();
     List<String> paramPresentations = ContainerUtil.newArrayListWithCapacity(2 * paramDeclarations.size());
     for (GoParameterDeclaration paramDeclaration : paramDeclarations) {
@@ -189,11 +198,11 @@ public class GoParameterInfoHandler implements ParameterInfoHandlerWithTabAction
       List<GoParamDefinition> paramDefinitionList = paramDeclaration.getParamDefinitionList();
       for (GoParamDefinition paramDefinition : paramDefinitionList) {
         String separator = isVariadic ? " ..." : " ";
-        paramPresentations.add(paramDefinition.getText() + separator + paramDeclaration.getType().getText());
+        paramPresentations.add(paramDefinition.getText() + separator + typePresentationFunction.fun(paramDeclaration.getType()));
       }
       if (paramDefinitionList.isEmpty()) {
         String separator = isVariadic ? "..." : "";
-        paramPresentations.add(separator + paramDeclaration.getType().getText());
+        paramPresentations.add(separator + typePresentationFunction.fun(paramDeclaration.getType()));
       }
     }
     return paramPresentations;

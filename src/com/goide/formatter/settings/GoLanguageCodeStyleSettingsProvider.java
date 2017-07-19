@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,15 @@ import com.intellij.psi.codeStyle.LanguageCodeStyleSettingsProvider;
 import org.jetbrains.annotations.NotNull;
 
 public class GoLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSettingsProvider {
+  private static final String DEFAULT_CODE_SAMPLE =
+    "package main\n" +
+    "\n" +
+    "import \"fmt\"\n" +
+    "\n" +
+    "func main() {\n" +
+    "\tfmt.Println(\"Hello\")\n" +
+    "}";
+
   @NotNull
   @Override
   public Language getLanguage() {
@@ -46,19 +55,13 @@ public class GoLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSettin
   public CommonCodeStyleSettings getDefaultCommonSettings() {
     CommonCodeStyleSettings defaultSettings = new CommonCodeStyleSettings(getLanguage());
     CommonCodeStyleSettings.IndentOptions indentOptions = defaultSettings.initIndentOptions();
-    indentOptions.INDENT_SIZE = 4;
-    indentOptions.CONTINUATION_INDENT_SIZE = 4;
-    indentOptions.TAB_SIZE = 4;
+    indentOptions.INDENT_SIZE = 8;
+    indentOptions.CONTINUATION_INDENT_SIZE = 8;
+    indentOptions.TAB_SIZE = 8;
     indentOptions.USE_TAB_CHARACTER = true;
+    
+    defaultSettings.BLOCK_COMMENT_AT_FIRST_COLUMN = false;
+    defaultSettings.LINE_COMMENT_AT_FIRST_COLUMN = false;
     return defaultSettings;
   }
-
-  private static final String DEFAULT_CODE_SAMPLE =
-    "package main\n" +
-    "\n" +
-    "import \"fmt\"\n" +
-    "\n" +
-    "func main() {\n" +
-    "\tfmt.Println(\"Hello\")\n" +
-    "}";
 }

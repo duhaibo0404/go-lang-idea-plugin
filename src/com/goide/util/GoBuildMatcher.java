@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ public class GoBuildMatcher {
   /**
    * @param checkBuildFlags should be false for directly used files: go run gen.go
    */
-  public boolean matchFile(@NotNull PsiFile file, boolean checkBuildFlags) {
+  private boolean matchFile(@NotNull PsiFile file, boolean checkBuildFlags) {
     if (!(file instanceof GoFile)) {
       // TODO support .c, .cpp and other
       return false;
@@ -58,14 +58,13 @@ public class GoBuildMatcher {
     return match(file.getName(), ((GoFile)file).getBuildFlags(), checkBuildFlags);
   }
 
-  public boolean match(@NotNull String fileName, @Nullable String buildFlags, boolean checkBuildFlags) {
-    if (GoUtil.directoryToIgnore(fileName) || !matchFileName(fileName)) return false;
+  private boolean match(@NotNull String fileName, @Nullable String buildFlags, boolean checkBuildFlags) {
+    if (!matchFileName(fileName)) return false;
 
     if (!checkBuildFlags || buildFlags == null) return true;
     for (String line : StringUtil.split(buildFlags, "|")) {
       if (!matchBuildFlagsLine(line)) return false;
     }
-
     return true;
   }
 
@@ -104,8 +103,7 @@ public class GoBuildMatcher {
     if ("cgo".equals(name)) {
       return myTarget.cgoEnabled == ThreeState.YES;
     }
-    if (myTarget.supportsFlag(name)) return true;
-    return false;
+    return myTarget.supportsFlag(name);
   }
 
   public boolean matchFileName(@NotNull String fileName) {

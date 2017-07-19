@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,46 +84,43 @@ public class GoSdkConfigurable implements SearchableConfigurable, Configurable.N
 
   @Override
   public void apply() throws ConfigurationException {
-    ApplicationManager.getApplication().runWriteAction(new Runnable() {
-      @Override
-      public void run() {
-        if (myProject.isDefault() || myProject.isDisposed()) {
-          return;
-        }
-
-        LibraryTable table = LibraryTablesRegistrar.getInstance().getLibraryTable(myProject);
-        Library get = table.getLibraryByName(GoSmallIDEsSdkService.LIBRARY_NAME);
-        Library lib = get != null ? get : table.createLibrary(GoSmallIDEsSdkService.LIBRARY_NAME);
-
-        Library.ModifiableModel libraryModel = lib.getModifiableModel();
-        String libUrl = ArrayUtil.getFirstElement(lib.getUrls(OrderRootType.CLASSES));
-        if (libUrl != null) {
-          libraryModel.removeRoot(libUrl, OrderRootType.CLASSES);
-        }
-
-        String sdkPath = GoSdkUtil.adjustSdkPath(mySdkPathField.getText());
-        String versionString = GoSdkUtil.retrieveGoVersion(sdkPath);
-        boolean toRemove = StringUtil.isEmpty(sdkPath) || versionString == null;
-
-        if (!toRemove) {
-          for (VirtualFile file : GoSdkUtil.getSdkDirectoriesToAttach(sdkPath, versionString)) {
-            libraryModel.addRoot(file, OrderRootType.CLASSES);
-          }
-        }
-        libraryModel.commit();
-
-        if (toRemove) {
-          updateModules(myProject, lib, true);
-          table.removeLibrary(lib);
-        }
-
-        table.getModifiableModel().commit();
-
-        if (!toRemove) {
-          updateModules(myProject, lib, false);
-        }
-        GoSdkService.getInstance(myProject).incModificationCount();
+    ApplicationManager.getApplication().runWriteAction(() -> {
+      if (myProject.isDefault() || myProject.isDisposed()) {
+        return;
       }
+
+      LibraryTable table = LibraryTablesRegistrar.getInstance().getLibraryTable(myProject);
+      Library get = table.getLibraryByName(GoSmallIDEsSdkService.LIBRARY_NAME);
+      Library lib = get != null ? get : table.createLibrary(GoSmallIDEsSdkService.LIBRARY_NAME);
+
+      Library.ModifiableModel libraryModel = lib.getModifiableModel();
+      String libUrl = ArrayUtil.getFirstElement(lib.getUrls(OrderRootType.CLASSES));
+      if (libUrl != null) {
+        libraryModel.removeRoot(libUrl, OrderRootType.CLASSES);
+      }
+
+      String sdkPath = GoSdkUtil.adjustSdkPath(mySdkPathField.getText());
+      String versionString = GoSdkUtil.retrieveGoVersion(sdkPath);
+      boolean toRemove = StringUtil.isEmpty(sdkPath) || versionString == null;
+
+      if (!toRemove) {
+        for (VirtualFile file : GoSdkUtil.getSdkDirectoriesToAttach(sdkPath, versionString)) {
+          libraryModel.addRoot(file, OrderRootType.CLASSES);
+        }
+      }
+      libraryModel.commit();
+
+      if (toRemove) {
+        updateModules(myProject, lib, true);
+        table.removeLibrary(lib);
+      }
+
+      table.getModifiableModel().commit();
+
+      if (!toRemove) {
+        updateModules(myProject, lib, false);
+      }
+      GoSdkService.getInstance(myProject).incModificationCount();
     });
   }
 
@@ -188,25 +185,19 @@ public class GoSdkConfigurable implements SearchableConfigurable, Configurable.N
     }
   }
 
-  private void asyncUpdateSdkVersion(@NotNull final String sdkPath) {
+  private void asyncUpdateSdkVersion(@NotNull String sdkPath) {
     ApplicationManager.getApplication().assertIsDispatchThread();
     ((CardLayout)myVersionPanel.getLayout()).show(myVersionPanel, VERSION_GETTING);
 
     if (!myAlarm.isDisposed()) {
       myAlarm.cancelAllRequests();
-      myAlarm.addRequest(new Runnable() {
-        @Override
-        public void run() {
-          final String version = GoSdkUtil.retrieveGoVersion(GoSdkUtil.adjustSdkPath(sdkPath));
-          ApplicationManager.getApplication().invokeLater(new Runnable() {
-            @Override
-            public void run() {
-              if (!Disposer.isDisposed(myDisposable)) {
-                setVersion(version);
-              }
-            }
-          }, ModalityState.any());
-        }
+      myAlarm.addRequest(() -> {
+        String version = GoSdkUtil.retrieveGoVersion(GoSdkUtil.adjustSdkPath(sdkPath));
+        ApplicationManager.getApplication().invokeLater(() -> {
+          if (!Disposer.isDisposed(myDisposable)) {
+            setVersion(version);
+          }
+        }, ModalityState.any());
       }, 100);
     }
   }
@@ -251,7 +242,7 @@ public class GoSdkConfigurable implements SearchableConfigurable, Configurable.N
 
   private class MyBrowseFolderListener extends ComponentWithBrowseButton.BrowseFolderActionListener<JTextField> {
     public MyBrowseFolderListener(@NotNull FileChooserDescriptor descriptor) {
-      super("Select Go SDK path", "", mySdkPathField, myProject, descriptor, TextComponentAccessor.TEXT_FIELD_WHOLE_TEXT);
+      super("Select Go SDK Path", "", mySdkPathField, myProject, descriptor, TextComponentAccessor.TEXT_FIELD_WHOLE_TEXT);
     }
 
     @Nullable
@@ -262,8 +253,8 @@ public class GoSdkConfigurable implements SearchableConfigurable, Configurable.N
   }
 
   private void listenForPathUpdate() {
-    final JTextField textField = mySdkPathField.getTextField();
-    final Ref<String> prevPathRef = Ref.create(StringUtil.notNullize(textField.getText()));
+    JTextField textField = mySdkPathField.getTextField();
+    Ref<String> prevPathRef = Ref.create(StringUtil.notNullize(textField.getText()));
     textField.getDocument().addDocumentListener(new DocumentAdapter() {
       @Override
       protected void textChanged(DocumentEvent e) {

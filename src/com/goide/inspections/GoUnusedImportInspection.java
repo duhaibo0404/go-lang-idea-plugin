@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,17 @@ import com.goide.codeInsight.imports.GoImportOptimizer;
 import com.goide.psi.GoFile;
 import com.goide.psi.GoImportSpec;
 import com.goide.psi.GoRecursiveVisitor;
+import com.goide.psi.impl.GoElementFactory;
+import com.goide.quickfix.GoRenameQuickFix;
 import com.intellij.codeInspection.*;
-import com.intellij.lang.ImportOptimizer;
+import com.intellij.find.FindManager;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiReference;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,16 +49,31 @@ public class GoUnusedImportInspection extends GoInspectionBase {
         return;
       }
       PsiFile file = element.getContainingFile();
-      ImportOptimizer optimizer = new GoImportOptimizer();
-      final Runnable runnable = optimizer.processFile(file);
-      new WriteCommandAction.Simple(project, getFamilyName(), file) {
-        @Override
-        protected void run() throws Throwable {
-          runnable.run();
-        }
-      }.execute();
+      WriteCommandAction.runWriteCommandAction(project, new GoImportOptimizer().processFile(file));
     }
   };
+
+  @Nullable private final static LocalQuickFix IMPORT_FOR_SIDE_EFFECTS_QUICK_FIX = new LocalQuickFixBase("Import for side-effects") {
+    @Override
+    public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
+      PsiElement element = descriptor.getPsiElement();
+      if (!(element instanceof GoImportSpec)) {
+        return;
+      }
+      element.replace(GoElementFactory.createImportSpec(project, ((GoImportSpec)element).getPath(), "_"));
+    }
+  };
+
+  private static void resolveAllReferences(@NotNull GoFile file) {
+    file.accept(new GoRecursiveVisitor() {
+      @Override
+      public void visitElement(@NotNull PsiElement o) {
+        for (PsiReference reference : o.getReferences()) {
+          reference.resolve();
+        }
+      }
+    });
+  }
 
   @Override
   protected void checkFile(@NotNull GoFile file, @NotNull ProblemsHolder problemsHolder) {
@@ -78,32 +97,25 @@ public class GoUnusedImportInspection extends GoInspectionBase {
       while (imports.hasNext()) {
         GoImportSpec redeclaredImport = imports.next();
         if (!duplicatedEntries.contains(redeclaredImport)) {
-          problemsHolder.registerProblem(redeclaredImport, "Redeclared import", ProblemHighlightType.GENERIC_ERROR);
+          LocalQuickFix[] quickFixes = FindManager.getInstance(redeclaredImport.getProject()).canFindUsages(redeclaredImport)
+                                       ? new LocalQuickFix[]{new GoRenameQuickFix(redeclaredImport)}
+                                       : LocalQuickFix.EMPTY_ARRAY;
+          problemsHolder.registerProblem(redeclaredImport, "Redeclared import", ProblemHighlightType.GENERIC_ERROR, quickFixes);
         }
       }
     }
 
-    if (!problemsHolder.isOnTheFly()) {
-      resolveAllReferences(file);
+    if (importMap.containsKey(".")) {
+      if (!problemsHolder.isOnTheFly() || ApplicationManager.getApplication().isUnitTestMode()) resolveAllReferences(file);
     }
-    for (PsiElement importEntry : GoImportOptimizer.filterUnusedImports(file, importMap).values()) {
+    MultiMap<String, GoImportSpec> unusedImportsMap = GoImportOptimizer.filterUnusedImports(file, importMap);
+    Set<GoImportSpec> unusedImportSpecs = ContainerUtil.newHashSet(unusedImportsMap.values());
+    for (PsiElement importEntry : unusedImportSpecs) {
       GoImportSpec spec = GoImportOptimizer.getImportSpec(importEntry);
-      if (spec != null) {
-        if (spec.getImportString().resolve() != null) {
-          problemsHolder.registerProblem(spec, "Unused import", ProblemHighlightType.GENERIC_ERROR, OPTIMIZE_QUICK_FIX);
-        }
+      if (spec != null && spec.getImportString().resolve() != null) {
+        problemsHolder.registerProblem(spec, "Unused import", ProblemHighlightType.GENERIC_ERROR, OPTIMIZE_QUICK_FIX,
+                                       IMPORT_FOR_SIDE_EFFECTS_QUICK_FIX);
       }
     }
-  }
-
-  private static void resolveAllReferences(@NotNull GoFile file) {
-    file.accept(new GoRecursiveVisitor() {
-      @Override
-      public void visitElement(@NotNull PsiElement o) {
-        for (PsiReference reference : o.getReferences()) {
-          reference.resolve();
-        }
-      }
-    });
   }
 }

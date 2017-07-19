@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +22,13 @@ import com.goide.appengine.YamlFilesModificationTracker;
 import com.goide.project.GoApplicationLibrariesService;
 import com.goide.project.GoLibrariesService;
 import com.goide.psi.GoFile;
-import com.goide.util.GoUtil;
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.ProjectRootManager;
-import com.intellij.openapi.util.Condition;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.util.io.FileUtil;
@@ -40,7 +39,6 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.Function;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
@@ -51,43 +49,53 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Collections;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.intellij.util.containers.ContainerUtil.newLinkedHashSet;
 
 public class GoSdkUtil {
-  private static final Pattern GO_VERSION_PATTERN = Pattern.compile("theVersion\\s*=\\s*`go([\\d.]+\\w+(\\d+)?)`");
-  private static final Pattern GAE_VERSION_PATTERN = Pattern.compile("theVersion\\s*=\\s*`go([\\d.]+)( \\(appengine-[\\d.]+\\))?`");
-  private static final Pattern GO_DEVEL_VERSION_PATTERN = Pattern.compile("theVersion\\s*=\\s*`(devel.*)`");
+  private static final Pattern GO_VERSION_PATTERN = Pattern.compile("[tT]heVersion\\s*=\\s*`go([\\d.]+\\w+(\\d+)?)`");
+  private static final Pattern GAE_VERSION_PATTERN = Pattern.compile("[tT]heVersion\\s*=\\s*`go([\\d.]+)( \\(appengine-[\\d.]+\\))?`");
+  private static final Pattern GO_DEVEL_VERSION_PATTERN = Pattern.compile("[tT]heVersion\\s*=\\s*`(devel.*)`");
+  private static final Key<String> ZVERSION_DATA_KEY = Key.create("GO_ZVERSION_KEY");
 
+  private GoSdkUtil() {}
 
-  // todo: caching
   @Nullable
-  public static VirtualFile getSdkSrcDir(@NotNull PsiElement context) {
-    Module module = ModuleUtilCore.findModuleForPsiElement(context);
-    VirtualFile sdkSrcDir = getSdkSrcDir(context.getProject(), module);
-    return sdkSrcDir != null ? sdkSrcDir : guessSkdSrcDir(context);
+  public static VirtualFile getSdkSrcDir(@NotNull Project project, @Nullable Module module) {
+    if (module != null) {
+      return CachedValuesManager.getManager(project).getCachedValue(module, () -> {
+        GoSdkService sdkService = GoSdkService.getInstance(module.getProject());
+        return CachedValueProvider.Result.create(getInnerSdkSrcDir(sdkService, module), sdkService);
+      });
+    }
+    return CachedValuesManager.getManager(project).getCachedValue(project, () -> {
+      GoSdkService sdkService = GoSdkService.getInstance(project);
+      return CachedValueProvider.Result.create(getInnerSdkSrcDir(sdkService, null), sdkService);
+    });
   }
 
   @Nullable
-  private static VirtualFile getSdkSrcDir(@NotNull Project project, @Nullable Module module) {
-    String sdkHomePath = GoSdkService.getInstance(project).getSdkHomePath(module);
-    String sdkVersionString = GoSdkService.getInstance(project).getSdkVersion(module);
-    VirtualFile sdkSrcDir = null;
-    if (sdkHomePath != null && sdkVersionString != null) {
-      File sdkSrcDirFile = new File(sdkHomePath, getSrcLocation(sdkVersionString));
-      sdkSrcDir = LocalFileSystem.getInstance().findFileByIoFile(sdkSrcDirFile);
-    }
-    return sdkSrcDir;
+  private static VirtualFile getInnerSdkSrcDir(@NotNull GoSdkService sdkService, @Nullable Module module) {
+    String sdkHomePath = sdkService.getSdkHomePath(module);
+    String sdkVersionString = sdkService.getSdkVersion(module);
+    return sdkHomePath != null && sdkVersionString != null ? getSdkSrcDir(sdkHomePath, sdkVersionString) : null;
+  }
+
+  @Nullable
+  private static VirtualFile getSdkSrcDir(@NotNull String sdkPath, @NotNull String sdkVersion) {
+    String srcPath = getSrcLocation(sdkVersion);
+    VirtualFile file = VirtualFileManager.getInstance().findFileByUrl(VfsUtilCore.pathToUrl(FileUtil.join(sdkPath, srcPath)));
+    return file != null && file.isDirectory() ? file : null;
   }
 
   @Nullable
   public static GoFile findBuiltinFile(@NotNull PsiElement context) {
-    final Project project = context.getProject();
-    Module moduleFromContext = ModuleUtilCore.findModuleForPsiElement(context);
+    Project project = context.getProject();
+    // it's important to ask module on file, otherwise module won't be found for elements in libraries files [zolotov]
+    Module moduleFromContext = ModuleUtilCore.findModuleForPsiElement(context.getContainingFile());
     if (moduleFromContext == null) {
       for (Module module : ModuleManager.getInstance(project).getModules()) {
         if (GoSdkService.getInstance(project).isGoModule(module)) {
@@ -96,22 +104,18 @@ public class GoSdkUtil {
         }
       }
     }
-    
-    final Module module = moduleFromContext;
+
+    Module module = moduleFromContext;
     UserDataHolder holder = ObjectUtils.notNull(module, project);
-    VirtualFile file = CachedValuesManager.getManager(context.getProject()).getCachedValue(holder, new CachedValueProvider<VirtualFile>() {
-      @Nullable
-      @Override
-      public Result<VirtualFile> compute() {
-        VirtualFile sdkSrcDir = getSdkSrcDir(project, module);
-        VirtualFile result = sdkSrcDir != null ? sdkSrcDir.findFileByRelativePath(GoConstants.BUILTIN_FILE_PATH) : null;
-        return Result.create(result, getSdkAndLibrariesCacheDependencies(project, module, result));
-      }
+    VirtualFile file = CachedValuesManager.getManager(context.getProject()).getCachedValue(holder, () -> {
+      VirtualFile sdkSrcDir = getSdkSrcDir(project, module);
+      VirtualFile result = sdkSrcDir != null ? sdkSrcDir.findFileByRelativePath(GoConstants.BUILTIN_FILE_PATH) : null;
+      return CachedValueProvider.Result.create(result, getSdkAndLibrariesCacheDependencies(project, module, result));
     });
 
     if (file == null) return null;
     PsiFile psiBuiltin = context.getManager().findFile(file);
-    return (psiBuiltin instanceof GoFile) ? (GoFile)psiBuiltin : null;
+    return psiBuiltin instanceof GoFile ? (GoFile)psiBuiltin : null;
   }
 
   @Nullable
@@ -126,6 +130,54 @@ public class GoSdkUtil {
     return fromPath != null ? VfsUtil.findFileByIoFile(fromPath, true) : null;
   }
 
+  /**
+   * @return concatenation of {@link this#getSdkSrcDir(Project, Module)} and {@link this#getGoPathSources(Project, Module)}
+   */
+  @NotNull
+  public static LinkedHashSet<VirtualFile> getSourcesPathsToLookup(@NotNull Project project, @Nullable Module module) {
+    LinkedHashSet<VirtualFile> sdkAndGoPath = newLinkedHashSet();
+    ContainerUtil.addIfNotNull(sdkAndGoPath, getSdkSrcDir(project, module));
+    ContainerUtil.addAllNotNull(sdkAndGoPath, getGoPathSources(project, module));
+    return sdkAndGoPath;
+  }
+
+  @NotNull
+  public static LinkedHashSet<VirtualFile> getVendoringAwareSourcesPathsToLookup(@NotNull Project project,
+                                                                                 @Nullable Module module,
+                                                                                 @Nullable VirtualFile contextFile) {
+    LinkedHashSet<VirtualFile> sdkAndGoPath = getSourcesPathsToLookup(project, module);
+    if (contextFile != null) {
+      Collection<VirtualFile> vendorDirectories = collectVendorDirectories(contextFile, sdkAndGoPath);
+      if (!vendorDirectories.isEmpty()) {
+        LinkedHashSet<VirtualFile> result = newLinkedHashSet(vendorDirectories);
+        result.addAll(sdkAndGoPath);
+        return result;
+      }
+    }
+    return sdkAndGoPath;
+  }
+
+  @NotNull
+  private static Collection<VirtualFile> collectVendorDirectories(@Nullable VirtualFile contextDirectory,
+                                                                  @NotNull Set<VirtualFile> sourceRoots) {
+    if (contextDirectory == null) {
+      return Collections.emptyList();
+    }
+    Collection<VirtualFile> vendorDirectories = ContainerUtil.newArrayList();
+    VirtualFile directory = contextDirectory;
+    while (directory != null) {
+      VirtualFile vendorDirectory = directory.findChild(GoConstants.VENDOR);
+      if (vendorDirectory != null && vendorDirectory.isDirectory()) {
+        vendorDirectories.add(vendorDirectory);
+      }
+      if (sourceRoots.contains(directory)) {
+        break;
+      }
+      directory = directory.getParent();
+    }
+    return vendorDirectories;
+  }
+
   @NotNull
   private static Collection<VirtualFile> getGoPathRoots(@NotNull Project project, @Nullable Module module) {
     Collection<VirtualFile> roots = ContainerUtil.newArrayList();
@@ -138,17 +190,33 @@ public class GoSdkUtil {
 
   @NotNull
   public static Collection<VirtualFile> getGoPathSources(@NotNull Project project, @Nullable Module module) {
-    Collection<VirtualFile> result = newLinkedHashSet();
-    if (module != null && GoSdkService.getInstance(project).isAppEngineSdk(module)) {
-      ContainerUtil.addAllNotNull(result, ContainerUtil.mapNotNull(YamlFilesModificationTracker.getYamlFiles(project, module),
-                                                                   GoUtil.RETRIEVE_FILE_PARENT_FUNCTION));
+    if (module != null) {
+      return CachedValuesManager.getManager(project).getCachedValue(module, () -> {
+        Collection<VirtualFile> result = newLinkedHashSet();
+        Project project1 = module.getProject();
+        GoSdkService sdkService = GoSdkService.getInstance(project1);
+        if (sdkService.isAppEngineSdk(module)) {
+          ContainerUtil.addAllNotNull(result, ContainerUtil.mapNotNull(YamlFilesModificationTracker.getYamlFiles(project1, module),
+                                                                       VirtualFile::getParent));
+        }
+        result.addAll(getInnerGoPathSources(project1, module));
+        return CachedValueProvider.Result
+          .create(result, getSdkAndLibrariesCacheDependencies(project1, module, YamlFilesModificationTracker.getInstance(project1)));
+      });
     }
-    result.addAll(ContainerUtil.mapNotNull(getGoPathRoots(project, module), new RetrieveSubDirectoryOrSelfFunction("src")));
-    return result;
+    return CachedValuesManager.getManager(project).getCachedValue(project,
+                                                                  (CachedValueProvider<Collection<VirtualFile>>)() -> CachedValueProvider.Result
+                                                                    .create(getInnerGoPathSources(project, null),
+                                                                            getSdkAndLibrariesCacheDependencies(project, null, YamlFilesModificationTracker.getInstance(project))));
   }
 
   @NotNull
-  public static Collection<VirtualFile> getGoPathBins(@NotNull Project project, @Nullable Module module) {
+  private static List<VirtualFile> getInnerGoPathSources(@NotNull Project project, @Nullable Module module) {
+    return ContainerUtil.mapNotNull(getGoPathRoots(project, module), new RetrieveSubDirectoryOrSelfFunction("src"));
+  }
+
+  @NotNull
+  private static Collection<VirtualFile> getGoPathBins(@NotNull Project project, @Nullable Module module) {
     Collection<VirtualFile> result = newLinkedHashSet(ContainerUtil.mapNotNull(getGoPathRoots(project, module),
                                                                                new RetrieveSubDirectoryOrSelfFunction("bin")));
     String executableGoPath = GoSdkService.getInstance(project).getGoExecutablePath(module);
@@ -171,20 +239,26 @@ public class GoSdkUtil {
 
   @NotNull
   public static String retrieveGoPath(@NotNull Project project, @Nullable Module module) {
-    return StringUtil.join(ContainerUtil.map(getGoPathRoots(project, module), GoUtil.RETRIEVE_FILE_PATH_FUNCTION), File.pathSeparator);
+    return StringUtil.join(ContainerUtil.map(getGoPathRoots(project, module), VirtualFile::getPath), File.pathSeparator);
   }
 
   @NotNull
   public static String retrieveEnvironmentPathForGo(@NotNull Project project, @Nullable Module module) {
-    return StringUtil.join(ContainerUtil.map(getGoPathBins(project, module), GoUtil.RETRIEVE_FILE_PATH_FUNCTION), File.pathSeparator);
+    return StringUtil.join(ContainerUtil.map(getGoPathBins(project, module), VirtualFile::getPath), File.pathSeparator);
   }
 
   @NotNull
-  static String getSrcLocation(@NotNull String version) {
+  private static String getSrcLocation(@NotNull String version) {
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      return "src/pkg";
+    }
     if (version.startsWith("devel")) {
       return "src";
     }
-    return compareVersions(version, "1.4") < 0 ? "src/pkg" : "src";
+    if (version.length() > 2 && StringUtil.parseDouble(version.substring(0, 3), 1.4) < 1.4) {
+      return "src/pkg";
+    }
+    return "src";
   }
 
   public static int compareVersions(@NotNull String lhs, @NotNull String rhs) {
@@ -192,61 +266,43 @@ public class GoSdkUtil {
   }
 
   @Nullable
-  private static VirtualFile guessSkdSrcDir(@NotNull PsiElement context) {
-    VirtualFile virtualFile = context.getContainingFile().getOriginalFile().getVirtualFile();
-    return ProjectRootManager.getInstance(context.getProject()).getFileIndex().getClassRootForFile(virtualFile);
-  }
-
-  @Nullable
-  public static VirtualFile findFileByRelativeToLibrariesPath(@NotNull String path, @NotNull Project project, @Nullable Module module) {
-    for (VirtualFile root : getGoPathSources(project, module)) {
-      VirtualFile file = root.findFileByRelativePath(path);
-      if (file != null) {
-        return file;
-      }
-    }
-    return null;
-  }
-
-  @Nullable
-  @Contract("null -> null")
-  public static String getImportPath(@Nullable final PsiDirectory psiDirectory) {
+  @Contract("null, _ -> null")
+  public static String getImportPath(@Nullable PsiDirectory psiDirectory, boolean withVendoring) {
     if (psiDirectory == null) {
       return null;
     }
-    return CachedValuesManager.getCachedValue(psiDirectory, new CachedValueProvider<String>() {
-      @Nullable
-      @Override
-      public Result<String> compute() {
-        Project project = psiDirectory.getProject();
-        Module module = ModuleUtilCore.findModuleForPsiElement(psiDirectory);
-        String path = getPathRelativeToSdkAndLibraries(psiDirectory.getVirtualFile(), project, module);
-        return Result.create(path, getSdkAndLibrariesCacheDependencies(psiDirectory));
-      }
-    });
+    return CachedValuesManager.getCachedValue(psiDirectory, withVendoring ? new CachedVendoredImportPathProvider(psiDirectory)
+                                                                          : new CachedImportPathProviderImpl(psiDirectory));
   }
 
   @Nullable
-  public static String getPathRelativeToSdkAndLibraries(@NotNull VirtualFile file, @Nullable Project project, @Nullable Module module) {
-    if (project != null) {
-      Collection<VirtualFile> roots = newLinkedHashSet();
-      ContainerUtil.addIfNotNull(roots, getSdkSrcDir(project, module));
-      roots.addAll(getGoPathSources(project, module));
+  private static String getPathRelativeToSdkAndLibrariesAndVendor(@NotNull PsiDirectory psiDirectory, boolean withVendoring) {
+    VirtualFile file = psiDirectory.getVirtualFile();
+    Project project = psiDirectory.getProject();
+    Module module = ModuleUtilCore.findModuleForPsiElement(psiDirectory);
+    LinkedHashSet<VirtualFile> sourceRoots = withVendoring ? getVendoringAwareSourcesPathsToLookup(project, module, file)
+                                                           : getSourcesPathsToLookup(project, module);
 
-      String result = null;
-      for (VirtualFile root : roots) {
-        String relativePath = VfsUtilCore.getRelativePath(file, root, '/');
-        if (StringUtil.isNotEmpty(relativePath) && (result == null || result.length() > relativePath.length())) {
-          result = relativePath;
-        }
-      }
-      if (result != null) return result;
+    String relativePath = getRelativePathToRoots(file, sourceRoots);
+    if (relativePath != null) {
+      return relativePath;
     }
 
     String filePath = file.getPath();
     int src = filePath.lastIndexOf("/src/");
     if (src > -1) {
       return filePath.substring(src + 5);
+    }
+    return null;
+  }
+
+  @Nullable
+  public static String getRelativePathToRoots(@NotNull VirtualFile file, @NotNull Collection<VirtualFile> sourceRoots) {
+    for (VirtualFile root : sourceRoots) {
+      String relativePath = VfsUtilCore.getRelativePath(file, root, '/');
+      if (StringUtil.isNotEmpty(relativePath)) {
+        return relativePath;
+      }
     }
     return null;
   }
@@ -315,24 +371,38 @@ public class GoSdkUtil {
   @Nullable
   public static String retrieveGoVersion(@NotNull String sdkPath) {
     try {
-      String oldStylePath = new File(sdkPath, "src/pkg/" + GoConstants.GO_VERSION_FILE_PATH).getPath();
-      String newStylePath = new File(sdkPath, "src/" + GoConstants.GO_VERSION_FILE_PATH).getPath();
-      File zVersionFile = FileUtil.findFirstThatExist(oldStylePath, newStylePath);
-      if (zVersionFile == null) {
-        GoSdkService.LOG.debug("Cannot find zVersion file at sdk path: " + sdkPath);
-        return null;
+      VirtualFile sdkRoot = VirtualFileManager.getInstance().findFileByUrl(VfsUtilCore.pathToUrl(sdkPath));
+      if (sdkRoot != null) {
+        String cachedVersion = sdkRoot.getUserData(ZVERSION_DATA_KEY);
+        if (cachedVersion != null) {
+          return !cachedVersion.isEmpty() ? cachedVersion : null;
+        }
+
+        VirtualFile versionFile = sdkRoot.findFileByRelativePath("src/" + GoConstants.GO_VERSION_NEW_FILE_PATH);
+        if (versionFile == null) {
+          versionFile = sdkRoot.findFileByRelativePath("src/" + GoConstants.GO_VERSION_FILE_PATH);
+        }
+        if (versionFile == null) {
+          versionFile = sdkRoot.findFileByRelativePath("src/pkg/" + GoConstants.GO_VERSION_FILE_PATH);
+        }
+        if (versionFile != null) {
+          String text = VfsUtilCore.loadText(versionFile);
+          String version = parseGoVersion(text);
+          if (version == null) {
+            GoSdkService.LOG.debug("Cannot retrieve go version from zVersion file: " + text);
+          }
+          sdkRoot.putUserData(ZVERSION_DATA_KEY, StringUtil.notNullize(version));
+          return version;
+        }
+        else {
+          GoSdkService.LOG.debug("Cannot find go version file in sdk path: " + sdkPath);
+        }
       }
-      String file = FileUtil.loadFile(zVersionFile);
-      String version = parseGoVersion(file);
-      if (version == null) {
-        GoSdkService.LOG.debug("Cannot retrieve go version from zVersion file: " + file);
-      }
-      return version;
     }
     catch (IOException e) {
       GoSdkService.LOG.debug("Cannot retrieve go version from sdk path: " + sdkPath, e);
-      return null;
     }
+    return null;
   }
 
   @NotNull
@@ -358,23 +428,14 @@ public class GoSdkUtil {
 
   @NotNull
   public static Collection<VirtualFile> getSdkDirectoriesToAttach(@NotNull String sdkPath, @NotNull String versionString) {
-    String srcPath = getSrcLocation(versionString);
     // scr is enough at the moment, possible process binaries from pkg
-    VirtualFile src = VirtualFileManager.getInstance().findFileByUrl(VfsUtilCore.pathToUrl(FileUtil.join(sdkPath, srcPath)));
-    if (src != null && src.isDirectory()) {
-      return Collections.singletonList(src);
-    }
-    return Collections.emptyList();
+    return ContainerUtil.createMaybeSingletonList(getSdkSrcDir(sdkPath, versionString));
   }
 
   @NotNull
-  public static Collection<Object> getSdkAndLibrariesCacheDependencies(@NotNull PsiElement context, Object... extra) {
-    return getSdkAndLibrariesCacheDependencies(context.getProject(), ModuleUtilCore.findModuleForPsiElement(context),
-                                               ArrayUtil.append(extra, context));
-  }
-
-  @NotNull
-  public static Collection<Object> getSdkAndLibrariesCacheDependencies(@NotNull Project project, @Nullable Module module, Object... extra) {
+  private static Collection<Object> getSdkAndLibrariesCacheDependencies(@NotNull Project project,
+                                                                        @Nullable Module module,
+                                                                        Object... extra) {
     Collection<Object> dependencies = ContainerUtil.newArrayList((Object[])GoLibrariesService.getModificationTrackers(project, module));
     ContainerUtil.addAllNotNull(dependencies, GoSdkService.getInstance(project));
     ContainerUtil.addAllNotNull(dependencies, extra);
@@ -384,16 +445,47 @@ public class GoSdkUtil {
   @NotNull
   public static Collection<Module> getGoModules(@NotNull Project project) {
     if (project.isDefault()) return Collections.emptyList();
-    final GoSdkService sdkService = GoSdkService.getInstance(project);
-    return ContainerUtil.filter(ModuleManager.getInstance(project).getModules(), new Condition<Module>() {
-      @Override
-      public boolean value(Module module) {
-        return sdkService.isGoModule(module);
-      }
-    });
+    GoSdkService sdkService = GoSdkService.getInstance(project);
+    return ContainerUtil.filter(ModuleManager.getInstance(project).getModules(), sdkService::isGoModule);
   }
 
-  public static class RetrieveSubDirectoryOrSelfFunction implements Function<VirtualFile, VirtualFile> {
+  public static boolean isUnreachableInternalPackage(@NotNull VirtualFile targetDirectory,
+                                                     @NotNull VirtualFile referenceContextFile,
+                                                     @NotNull Set<VirtualFile> sourceRoots) {
+    return isUnreachablePackage(GoConstants.INTERNAL, targetDirectory, referenceContextFile, sourceRoots);
+  }
+
+  public static boolean isUnreachableVendoredPackage(@NotNull VirtualFile targetDirectory,
+                                                     @NotNull VirtualFile referenceContextFile,
+                                                     @NotNull Set<VirtualFile> sourceRoots) {
+    return isUnreachablePackage(GoConstants.VENDOR, targetDirectory, referenceContextFile, sourceRoots);
+  }
+
+  @Nullable
+  public static VirtualFile findParentDirectory(@Nullable VirtualFile file, @NotNull Set<VirtualFile> sourceRoots, @NotNull String name) {
+    if (file == null) {
+      return null;
+    }
+    VirtualFile currentFile = file.isDirectory() ? file : file.getParent();
+    while (currentFile != null && !sourceRoots.contains(currentFile)) {
+      if (currentFile.isDirectory() && name.equals(currentFile.getName())) {
+        return currentFile;
+      }
+      currentFile = currentFile.getParent();
+    }
+    return null;
+  }
+
+  private static boolean isUnreachablePackage(@NotNull String unreachableDirectoryName,
+                                              @NotNull VirtualFile targetDirectory,
+                                              @NotNull VirtualFile referenceContextFile,
+                                              @NotNull Set<VirtualFile> sourceRoots) {
+    VirtualFile directory = findParentDirectory(targetDirectory, sourceRoots, unreachableDirectoryName);
+    VirtualFile parent = directory != null ? directory.getParent() : null;
+    return directory != null && !VfsUtilCore.isAncestor(parent, referenceContextFile, false);
+  }
+
+  private static class RetrieveSubDirectoryOrSelfFunction implements Function<VirtualFile, VirtualFile> {
     @NotNull private final String mySubdirName;
 
     public RetrieveSubDirectoryOrSelfFunction(@NotNull String subdirName) {
@@ -403,6 +495,36 @@ public class GoSdkUtil {
     @Override
     public VirtualFile fun(VirtualFile file) {
       return file == null || FileUtil.namesEqual(mySubdirName, file.getName()) ? file : file.findChild(mySubdirName);
+    }
+  }
+
+  private abstract static class CachedImportPathProvider implements CachedValueProvider<String> {
+    private final PsiDirectory myPsiDirectory;
+    private final boolean myWithVendoring;
+
+    public CachedImportPathProvider(@NotNull PsiDirectory psiDirectory, boolean vendoring) {
+      myPsiDirectory = psiDirectory;
+      myWithVendoring = vendoring;
+    }
+
+    @Nullable
+    @Override
+    public Result<String> compute() {
+      String path = getPathRelativeToSdkAndLibrariesAndVendor(myPsiDirectory, myWithVendoring);
+      Module module = ModuleUtilCore.findModuleForPsiElement(myPsiDirectory);
+      return Result.create(path, getSdkAndLibrariesCacheDependencies(myPsiDirectory.getProject(), module, myPsiDirectory));
+    }
+  }
+
+  private static class CachedImportPathProviderImpl extends CachedImportPathProvider {
+    public CachedImportPathProviderImpl(@NotNull PsiDirectory psiDirectory) {
+      super(psiDirectory, false);
+    }
+  }
+
+  private static class CachedVendoredImportPathProvider extends CachedImportPathProvider {
+    public CachedVendoredImportPathProvider(@NotNull PsiDirectory psiDirectory) {
+      super(psiDirectory, true);
     }
   }
 }

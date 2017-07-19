@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,10 @@
 
 package com.goide.runconfig.testing.frameworks.gotest;
 
-import com.goide.psi.GoFunctionOrMethodDeclaration;
-import com.goide.psi.GoMethodDeclaration;
 import com.goide.runconfig.testing.GoTestRunConfigurationProducerBase;
-import org.jetbrains.annotations.Nullable;
-
 
 public class GotestRunConfigurationProducer extends GoTestRunConfigurationProducerBase implements Cloneable {
   public GotestRunConfigurationProducer() {
     super(GotestFramework.INSTANCE);
-  }
-  
-  @Override
-  protected boolean shouldSkipContext(@Nullable GoFunctionOrMethodDeclaration context) {
-    return context != null && context instanceof GoMethodDeclaration;
   }
 }

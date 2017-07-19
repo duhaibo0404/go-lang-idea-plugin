@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,11 +31,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class GoKeywordCompletionProvider extends CompletionProvider<CompletionParameters> {
-  public static final InsertHandler<LookupElement> EMPTY_INSERT_HANDLER = new InsertHandler<LookupElement>() {
-    @Override
-    public void handleInsert(InsertionContext context, LookupElement element) {
+  public static final InsertHandler<LookupElement> EMPTY_INSERT_HANDLER = (context, element) -> {
 
-    }
   };
 
   private final int myPriority;
@@ -55,10 +52,10 @@ public class GoKeywordCompletionProvider extends CompletionProvider<CompletionPa
     this(priority, insertHandler, null, keywords);
   }
 
-  public GoKeywordCompletionProvider(int priority,
-                                     @Nullable InsertHandler<LookupElement> insertHandler,
-                                     @Nullable AutoCompletionPolicy completionPolicy,
-                                     @NotNull String... keywords) {
+  private GoKeywordCompletionProvider(int priority,
+                                      @Nullable InsertHandler<LookupElement> insertHandler,
+                                      @Nullable AutoCompletionPolicy completionPolicy,
+                                      @NotNull String... keywords) {
     myPriority = priority;
     myInsertHandler = insertHandler;
     myCompletionPolicy = completionPolicy;
@@ -88,25 +85,22 @@ public class GoKeywordCompletionProvider extends CompletionProvider<CompletionPa
   }
 
   @Nullable
-  public static InsertHandler<LookupElement> createTemplateBasedInsertHandler(@NotNull final String templateId) {
-    return new InsertHandler<LookupElement>() {
-      @Override
-      public void handleInsert(@NotNull InsertionContext context, LookupElement item) {
-        Template template = TemplateSettings.getInstance().getTemplateById(templateId);
-        Editor editor = context.getEditor();
-        if (template != null) {
-          editor.getDocument().deleteString(context.getStartOffset(), context.getTailOffset());
-          TemplateManager.getInstance(context.getProject()).startTemplate(editor, template);
+  public static InsertHandler<LookupElement> createTemplateBasedInsertHandler(@NotNull String templateId) {
+    return (context, item) -> {
+      Template template = TemplateSettings.getInstance().getTemplateById(templateId);
+      Editor editor = context.getEditor();
+      if (template != null) {
+        editor.getDocument().deleteString(context.getStartOffset(), context.getTailOffset());
+        TemplateManager.getInstance(context.getProject()).startTemplate(editor, template);
+      }
+      else {
+        int currentOffset = editor.getCaretModel().getOffset();
+        CharSequence documentText = editor.getDocument().getImmutableCharSequence();
+        if (documentText.length() <= currentOffset || documentText.charAt(currentOffset) != ' ') {
+          EditorModificationUtil.insertStringAtCaret(editor, " ");
         }
         else {
-          int currentOffset = editor.getCaretModel().getOffset();
-          CharSequence documentText = editor.getDocument().getImmutableCharSequence();
-          if (documentText.length() <= currentOffset || documentText.charAt(currentOffset) != ' ') {
-            EditorModificationUtil.insertStringAtCaret(editor, " ");
-          }
-          else {
-            EditorModificationUtil.moveCaretRelatively(editor, 1);
-          }
+          EditorModificationUtil.moveCaretRelatively(editor, 1);
         }
       }
     };

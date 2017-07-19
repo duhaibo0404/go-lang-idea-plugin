@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,16 +36,11 @@ import java.util.Collection;
 public class GoFunctionDeclarationStubElementType extends GoNamedStubElementType<GoFunctionDeclarationStub, GoFunctionDeclaration> {
   public static final GoFunctionDeclaration[] EMPTY_ARRAY = new GoFunctionDeclaration[0];
 
-  public static final ArrayFactory<GoFunctionDeclaration> ARRAY_FACTORY = new ArrayFactory<GoFunctionDeclaration>() {
-    @NotNull
-    @Override
-    public GoFunctionDeclaration[] create(int count) {
-      return count == 0 ? EMPTY_ARRAY : new GoFunctionDeclaration[count];
-    }
-  };
+  public static final ArrayFactory<GoFunctionDeclaration> ARRAY_FACTORY =
+    count -> count == 0 ? EMPTY_ARRAY : new GoFunctionDeclaration[count];
   
   private static final ArrayList<StubIndexKey<String, ? extends GoNamedElement>> EXTRA_KEYS =
-    ContainerUtil.<StubIndexKey<String, ? extends GoNamedElement>>newArrayList(GoFunctionIndex.KEY);
+    ContainerUtil.newArrayList(GoFunctionIndex.KEY);
 
   public GoFunctionDeclarationStubElementType(@NotNull String name) {
     super(name);

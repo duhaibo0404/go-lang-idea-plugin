@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import com.intellij.openapi.util.SimpleModificationTracker;
 import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.vfs.*;
 import com.intellij.psi.search.FilenameIndex;
-import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.util.ObjectUtils;
@@ -72,21 +71,16 @@ public class YamlFilesModificationTracker extends SimpleModificationTracker {
   }
 
   @NotNull
-  public static Collection<VirtualFile> getYamlFiles(@NotNull final Project project, @Nullable final Module module) {
+  public static Collection<VirtualFile> getYamlFiles(@NotNull Project project, @Nullable Module module) {
     UserDataHolder dataHolder = ObjectUtils.notNull(module, project);
-    return CachedValuesManager.getManager(project).getCachedValue(dataHolder, new CachedValueProvider<Collection<VirtualFile>>() {
-      @Nullable
-      @Override
-      public Result<Collection<VirtualFile>> compute() {
-        Collection<VirtualFile> yamlFiles = ApplicationManager.getApplication().runReadAction(new Computable<Collection<VirtualFile>>() {
-          @Override
-          public Collection<VirtualFile> compute() {
-            GlobalSearchScope scope = module != null ? GoUtil.moduleScopeWithoutLibraries(module) : GlobalSearchScope.projectScope(project);
-            return FilenameIndex.getAllFilesByExt(project, "yaml", scope);
-          }
-        });
-        return Result.create(yamlFiles, getInstance(project));
-      }
+    return CachedValuesManager.getManager(project).getCachedValue(dataHolder, () -> {
+      Collection<VirtualFile> yamlFiles = ApplicationManager.getApplication().runReadAction(new Computable<Collection<VirtualFile>>() {
+        @Override
+        public Collection<VirtualFile> compute() {
+          return FilenameIndex.getAllFilesByExt(project, "yaml", GoUtil.moduleScopeWithoutLibraries(project, module));
+        }
+      });
+      return CachedValueProvider.Result.create(yamlFiles, getInstance(project));
     });
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,43 +17,10 @@
 package com.goide.parser;
 
 import com.goide.GoParserDefinition;
-import com.intellij.core.CoreApplicationEnvironment;
-import com.intellij.lang.LanguageExtensionPoint;
-import com.intellij.openapi.extensions.Extensions;
-import com.intellij.testFramework.ParsingTestCase;
-import org.jetbrains.annotations.NotNull;
 
-public class GoParserTest extends ParsingTestCase {
+public class GoParserTest extends GoParserTestBase {
   public GoParserTest() {
     super("parser", "go", new GoParserDefinition());
-  }
-
-  @NotNull
-  @Override
-  protected String getTestDataPath() {
-    return "testData";
-  }
-
-  @Override
-  protected boolean skipSpaces() {
-    return true;
-  }
-
-  protected void doTest(boolean checkErrors) {
-    super.doTest(true);
-    if (checkErrors) {
-      assertFalse(
-        "PsiFile contains error elements",
-        toParseTreeText(myFile, skipSpaces(), includeRanges()).contains("PsiErrorElement")
-      );
-    }
-  }
-
-  @Override
-  protected void setUp() throws Exception {
-    super.setUp();
-    CoreApplicationEnvironment.registerExtensionPoint(
-      Extensions.getRootArea(), "com.intellij.lang.braceMatcher", LanguageExtensionPoint.class);
   }
 
   public void testError()                           { doTest(true);  }
@@ -64,8 +31,10 @@ public class GoParserTest extends ParsingTestCase {
   public void testCars()                            { doTest(true);  }
   public void testIfWithNew()                       { doTest(true);  }
   public void testRanges()                          { doTest(true);  }
+  public void testIncompleteRanges()                { doTest(false); }
   public void testTorture()                         { doTest(true);  }
   public void testLiteralValues()                   { doTest(true);  }
+  public void testLiteralValuesElse()               { doTest(true);  }
   public void testIfComposite()                     { doTest(true);  }
   public void testArrayTypes()                      { doTest(true);  }
   public void testArrayTypesInRanges()              { doTest(true);  }
@@ -73,10 +42,18 @@ public class GoParserTest extends ParsingTestCase {
   public void testSimple()                          { doTest(false); }
   public void testRecover()                         { doTest(false); }
   public void testRecover2()                        { doTest(false); }
+  public void testRecover3()                        { doTest(false); }
   public void testMethodExpr()                      { doTest(false); }
   public void testLabels()                          { doTest(false); }
   public void testBlockRecover()                    { doTest(false); }
   public void testMethodWithoutReceiverIdentifier() { doTest(false); }
   public void testExpressionPerformance()           { doTest(false); }
   public void testElementRecover()                  { doTest(false); }
+  public void testChanRecover()                     { doTest(false); }
+  public void testMapLiteralRecover()               { doTest(false); }
+  public void testPlusPlusRecover()                 { doTest(false); }
+  public void testTypeComma()                       { doTest(false); }
+  public void testIncDec()                          { doTest(false); }
+  public void testIncompleteTypeDeclaration()       { doTest(false); } 
+  public void testIncompleteVarDeclaration()        { doTest(false); } 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,13 +31,8 @@ public abstract class GoCachedReference<T extends PsiElement> extends PsiReferen
     super(element, TextRange.from(0, element.getTextLength()));
   }
 
-  private static final ResolveCache.AbstractResolver<PsiReferenceBase, PsiElement> MY_RESOLVER =
-    new ResolveCache.AbstractResolver<PsiReferenceBase, PsiElement>() {
-      @Override
-      public PsiElement resolve(@NotNull PsiReferenceBase base, boolean b) {
-        return ((GoCachedReference)base).resolveInner();
-      }
-    };
+  private static final ResolveCache.AbstractResolver<GoCachedReference, PsiElement> MY_RESOLVER =
+    (r, b) -> r.resolveInner();
 
   @Nullable
   protected abstract PsiElement resolveInner();
@@ -67,6 +62,16 @@ public abstract class GoCachedReference<T extends PsiElement> extends PsiReferen
   @Override
   public Object[] getVariants() {
     return ArrayUtil.EMPTY_OBJECT_ARRAY;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    return this == o || o instanceof GoCachedReference && getElement() == ((GoCachedReference)o).getElement();
+  }
+
+  @Override
+  public int hashCode() {
+    return getElement().hashCode();
   }
 
 }

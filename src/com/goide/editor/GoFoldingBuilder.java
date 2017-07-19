@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,13 +23,13 @@ import com.intellij.codeInsight.folding.CodeFoldingSettings;
 import com.intellij.lang.ASTNode;
 import com.intellij.lang.folding.CustomFoldingBuilder;
 import com.intellij.lang.folding.FoldingDescriptor;
+import com.intellij.lang.folding.NamedFoldingDescriptor;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiWhiteSpace;
 import com.intellij.psi.TokenType;
-import com.intellij.psi.search.PsiElementProcessor;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.containers.ContainerUtil;
@@ -40,121 +40,31 @@ import java.util.List;
 import java.util.Set;
 
 public class GoFoldingBuilder extends CustomFoldingBuilder implements DumbAware {
-  @Override
-  protected void buildLanguageFoldRegions(@NotNull final List<FoldingDescriptor> result,
-                                          @NotNull PsiElement root,
-                                          @NotNull Document document,
-                                          boolean quick) {
-    if (!(root instanceof GoFile)) return;
-    GoFile file = (GoFile)root;
-    if (!file.isContentsLoaded()) return;
-
-    GoImportList importList = ((GoFile)root).getImportList();
-    if (importList != null) {
-      GoImportDeclaration firstImport = ContainerUtil.getFirstItem(importList.getImportDeclarationList());
-      if (firstImport != null) {
-        PsiElement importKeyword = firstImport.getImport();
-        int offset = importKeyword.getTextRange().getEndOffset();
-        int startOffset = importKeyword.getNextSibling() instanceof PsiWhiteSpace ? offset + 1 : offset;
-        TextRange range = TextRange.create(startOffset, importList.getTextRange().getEndOffset());
-        if (range.getLength() > 3) {
-          result.add(new FoldingDescriptor(importList, range));
-        }
-      }
-    }
-
-    for (GoFunctionOrMethodDeclaration method : ContainerUtil.concat(file.getMethods(), file.getFunctions())) {
-      foldBlock(result, method.getBlock());
-    }
-
-    for (GoFunctionLit function : PsiTreeUtil.findChildrenOfType(file, GoFunctionLit.class)) {
-      foldBlock(result, function.getBlock());
-    }
-
-    for (GoTypeSpec type : file.getTypes()) {
-      foldTypes(type.getSpecType().getType(), result);
-    }
-
-    for (GoVarDeclaration varDeclaration : PsiTreeUtil.findChildrenOfType(file, GoVarDeclaration.class)) {
-      TextRange range = processList(varDeclaration.getLparen(), varDeclaration.getRparen(), varDeclaration.getVarSpecList().size());
-      if (range != null) {
-        result.add(new FoldingDescriptor(varDeclaration, range));
-      }
-    }
-
-    for (GoTypeDeclaration typeDeclaration : PsiTreeUtil.findChildrenOfType(file, GoTypeDeclaration.class)) {
-      TextRange range = processList(typeDeclaration.getLparen(), typeDeclaration.getRparen(), typeDeclaration.getTypeSpecList().size());
-      if (range != null) {
-        result.add(new FoldingDescriptor(typeDeclaration, range));
-      }
-    }
-
-    for (GoCompositeLit compositeLit : PsiTreeUtil.findChildrenOfType(file, GoCompositeLit.class)) {
-      GoLiteralValue literalValue = compositeLit.getLiteralValue();
-      TextRange range = processList(literalValue.getLbrace(), literalValue.getRbrace(), literalValue.getElementList().size());
-      if (range != null) {
-        result.add(new FoldingDescriptor(literalValue, range));
-      }
-    }
-
-    if (!quick) {
-      final Set<PsiElement> processedComments = ContainerUtil.newHashSet();
-      PsiTreeUtil.processElements(file, new PsiElementProcessor() {
-        @Override
-        public boolean execute(@NotNull PsiElement element) {
-          IElementType type = element.getNode().getElementType();
-          if (type == GoParserDefinition.MULTILINE_COMMENT && element.getTextRange().getLength() > 2) {
-            result.add(new FoldingDescriptor(element, element.getTextRange()));
-          }
-          if (type == GoParserDefinition.LINE_COMMENT) {
-            addCommentFolds(element, processedComments, result);
-          }
-          foldTypes(element, result); // folding for inner types
-          return true;
-        }
-      });
-    }
-  }
-
-  @Nullable
-  private static TextRange processList(@Nullable PsiElement left, @Nullable PsiElement right, int size) {
-    if (left == null || right == null || size < 2) {
-      return null;
-    }
-
-    int startOffset = left.getTextRange().getStartOffset();
-    int endOffset = right.getTextRange().getEndOffset();
-    return TextRange.create(startOffset, endOffset);
-  }
-
-  private static void foldBlock(@NotNull List<FoldingDescriptor> result, @Nullable GoBlock block) {
-    if (block != null && block.getTextRange().getLength() > 1) result.add(new FoldingDescriptor(block, block.getTextRange()));
-  }
-
   private static void foldTypes(@Nullable PsiElement e, @NotNull List<FoldingDescriptor> result) {
     if (e instanceof GoStructType) {
       if (((GoStructType)e).getFieldDeclarationList().isEmpty()) return;
-      addTypeBlock(e, ((GoStructType)e).getLbrace(), ((GoStructType)e).getRbrace(), result);
+      fold(e, ((GoStructType)e).getLbrace(), ((GoStructType)e).getRbrace(), "{...}", result);
     }
     if (e instanceof GoInterfaceType) {
       if (e.getChildren().length == 0) return;
-      addTypeBlock(e, ((GoInterfaceType)e).getLbrace(), ((GoInterfaceType)e).getRbrace(), result);
+      fold(e, ((GoInterfaceType)e).getLbrace(), ((GoInterfaceType)e).getRbrace(), "{...}", result);
     }
   }
 
-  private static void addTypeBlock(@NotNull PsiElement element,
-                                   @Nullable PsiElement l,
-                                   @Nullable PsiElement r,
-                                   @NotNull List<FoldingDescriptor> result) {
+  private static void fold(@NotNull PsiElement e,
+                           @Nullable PsiElement l,
+                           @Nullable PsiElement r,
+                           @NotNull String placeholderText,
+                           @NotNull List<FoldingDescriptor> result) {
     if (l != null && r != null) {
-      result.add(new FoldingDescriptor(element, TextRange.create(l.getTextRange().getStartOffset(), r.getTextRange().getEndOffset())));
+      result.add(new NamedFoldingDescriptor(e, l.getTextRange().getStartOffset(), r.getTextRange().getEndOffset(), null, placeholderText));
     }
   }
 
   // com.intellij.codeInsight.folding.impl.JavaFoldingBuilderBase.addCodeBlockFolds()
   private static void addCommentFolds(@NotNull PsiElement comment,
                                       @NotNull Set<PsiElement> processedComments,
-                                      @NotNull List<FoldingDescriptor> foldElements) {
+                                      @NotNull List<FoldingDescriptor> result) {
     if (processedComments.contains(comment)) return;
 
     PsiElement end = null;
@@ -172,22 +82,114 @@ public class GoFoldingBuilder extends CustomFoldingBuilder implements DumbAware 
     }
 
     if (end != null) {
-      foldElements.add(new FoldingDescriptor(comment, new TextRange(comment.getTextRange().getStartOffset(), end.getTextRange().getEndOffset())));
+      int startOffset = comment.getTextRange().getStartOffset();
+      int endOffset = end.getTextRange().getEndOffset();
+      result.add(new NamedFoldingDescriptor(comment, startOffset, endOffset, null, "/.../"));
+    }
+  }
+
+  @Override
+  protected void buildLanguageFoldRegions(@NotNull List<FoldingDescriptor> result,
+                                          @NotNull PsiElement root,
+                                          @NotNull Document document,
+                                          boolean quick) {
+    if (!(root instanceof GoFile)) return;
+    GoFile file = (GoFile)root;
+    if (!file.isContentsLoaded()) return;
+
+    GoImportList importList = ((GoFile)root).getImportList();
+    if (importList != null) {
+      GoImportDeclaration firstImport = ContainerUtil.getFirstItem(importList.getImportDeclarationList());
+      if (firstImport != null) {
+        PsiElement importKeyword = firstImport.getImport();
+        int offset = importKeyword.getTextRange().getEndOffset();
+        int startOffset = importKeyword.getNextSibling() instanceof PsiWhiteSpace ? offset + 1 : offset;
+        int endOffset = importList.getTextRange().getEndOffset();
+        if (endOffset - startOffset > 3) {
+          result.add(new NamedFoldingDescriptor(importList, startOffset, endOffset, null, "..."));
+        }
+      }
+    }
+
+    for (GoBlock block : PsiTreeUtil.findChildrenOfType(file, GoBlock.class)) {
+      if (block.getTextRange().getLength() > 1) {
+        result.add(new NamedFoldingDescriptor(block.getNode(), block.getTextRange(), null, "{...}"));
+      }
+    }
+
+    for (GoExprSwitchStatement switchStatement : PsiTreeUtil.findChildrenOfType(file, GoExprSwitchStatement.class)) {
+      fold(switchStatement, switchStatement.getLbrace(), switchStatement.getRbrace(), "{...}", result);
+    }
+
+    for (GoSelectStatement selectStatement : PsiTreeUtil.findChildrenOfType(file, GoSelectStatement.class)) {
+      fold(selectStatement, selectStatement.getLbrace(), selectStatement.getRbrace(), "{...}", result);
+    }
+
+    for (GoTypeSpec type : file.getTypes()) {
+      foldTypes(type.getSpecType().getType(), result);
+    }
+
+    for (GoCaseClause caseClause : PsiTreeUtil.findChildrenOfType(file, GoCaseClause.class)) {
+      PsiElement colon = caseClause.getColon();
+      if (colon != null && !caseClause.getStatementList().isEmpty()) {
+        fold(caseClause, colon.getNextSibling(), caseClause, "...", result);
+      }
+    }
+
+    for (GoCommClause commClause : PsiTreeUtil.findChildrenOfType(file, GoCommClause.class)) {
+      PsiElement colon = commClause.getColon();
+      if (colon != null && !commClause.getStatementList().isEmpty()) {
+        fold(commClause, colon.getNextSibling(), commClause, "...", result);
+      }
+    }
+
+    for (GoVarDeclaration varDeclaration : PsiTreeUtil.findChildrenOfType(file, GoVarDeclaration.class)) {
+      if (varDeclaration.getVarSpecList().size() > 1) {
+        fold(varDeclaration, varDeclaration.getLparen(), varDeclaration.getRparen(), "(...)", result);
+      }
+    }
+
+    for (GoConstDeclaration constDeclaration : PsiTreeUtil.findChildrenOfType(file, GoConstDeclaration.class)) {
+      if (constDeclaration.getConstSpecList().size() > 1) {
+        fold(constDeclaration, constDeclaration.getLparen(), constDeclaration.getRparen(), "(...)", result);
+      }
+    }
+
+    for (GoTypeDeclaration typeDeclaration : PsiTreeUtil.findChildrenOfType(file, GoTypeDeclaration.class)) {
+      if (typeDeclaration.getTypeSpecList().size() > 1) {
+        fold(typeDeclaration, typeDeclaration.getLparen(), typeDeclaration.getRparen(), "(...)", result);
+      }
+    }
+
+    for (GoCompositeLit compositeLit : PsiTreeUtil.findChildrenOfType(file, GoCompositeLit.class)) {
+      GoLiteralValue literalValue = compositeLit.getLiteralValue();
+      if (literalValue != null && literalValue.getElementList().size() > 1) {
+        fold(literalValue, literalValue.getLbrace(), literalValue.getRbrace(), "{...}", result);
+      }
+    }
+
+    if (!quick) {
+      Set<PsiElement> processedComments = ContainerUtil.newHashSet();
+      PsiTreeUtil.processElements(file, element -> {
+        ASTNode node = element.getNode();
+        IElementType type = node.getElementType();
+        TextRange range = element.getTextRange();
+        if (type == GoParserDefinition.MULTILINE_COMMENT && range.getLength() > 2) {
+          result.add(new NamedFoldingDescriptor(node, range, null, "/*...*/"));
+        }
+        if (type == GoParserDefinition.LINE_COMMENT) {
+          addCommentFolds(element, processedComments, result);
+        }
+        foldTypes(element, result); // folding for inner types
+        return true;
+      });
     }
   }
 
   @Nullable
   @Override
   protected String getLanguagePlaceholderText(@NotNull ASTNode node, @NotNull TextRange range) {
-    PsiElement psi = node.getPsi();
-    IElementType type = node.getElementType();
-    if (psi instanceof GoBlock || psi instanceof GoStructType ||
-        psi instanceof GoInterfaceType || psi instanceof GoLiteralValue) return "{...}";
-    if (psi instanceof GoVarDeclaration || psi instanceof GoTypeDeclaration) return "(...)";
-    if (psi instanceof GoImportDeclaration) return "...";
-    if (GoParserDefinition.LINE_COMMENT == type) return "/.../";
-    if (GoParserDefinition.MULTILINE_COMMENT == type) return "/*...*/";
-    return null;
+    return "...";
   }
 
   @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,9 @@ package com.goide.inspections;
 
 import com.goide.psi.GoFile;
 import com.goide.psi.GoVisitor;
-import com.goide.util.GoUtil;
+import com.goide.psi.impl.GoPsiImplUtil;
 import com.intellij.codeInspection.*;
+import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.psi.PsiElementVisitor;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.ObjectUtils;
@@ -27,13 +28,15 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 abstract public class GoInspectionBase extends LocalInspectionTool {
-  private static final PsiElementVisitor DUMMY_VISITOR = new PsiElementVisitor() { };
+  protected static final GoVisitor DUMMY_VISITOR = new GoVisitor() { };
 
   @NotNull
   @Override
   public final PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly, @NotNull LocalInspectionToolSession session) {
     GoFile file = ObjectUtils.tryCast(session.getFile(), GoFile.class);
-    return file != null && GoUtil.allowed(file) ? buildGoVisitor(holder, session) : DUMMY_VISITOR;
+    return file != null && GoPsiImplUtil.allowed(file, null, ModuleUtilCore.findModuleForPsiElement(file))
+           ? buildGoVisitor(holder, session)
+           : DUMMY_VISITOR;
   }
 
   @NotNull
@@ -49,7 +52,7 @@ abstract public class GoInspectionBase extends LocalInspectionTool {
   }
 
   @NotNull
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder, @SuppressWarnings({"UnusedParameters", "For future"}) @NotNull LocalInspectionToolSession session) {
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
     return new GoVisitor() {
       @Override
       public void visitFile(PsiFile file) {

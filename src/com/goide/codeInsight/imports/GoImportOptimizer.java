@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,14 @@ package com.goide.codeInsight.imports;
 
 import com.goide.GoTypes;
 import com.goide.psi.*;
-import com.goide.psi.impl.GoReference;
+import com.goide.psi.impl.GoReferenceBase;
 import com.intellij.lang.ImportOptimizer;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.Comparing;
+import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.psi.PsiDocumentManager;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiWhiteSpace;
+import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
@@ -47,15 +45,19 @@ public class GoImportOptimizer implements ImportOptimizer {
 
   @NotNull
   @Override
-  public Runnable processFile(@NotNull final PsiFile file) {
-    commit(file);
-    assert file instanceof GoFile;
+  public Runnable processFile(@NotNull PsiFile file) {
+    if (!(file instanceof GoFile)) {
+      return EmptyRunnable.getInstance();
+    }
     MultiMap<String, GoImportSpec> importMap = ((GoFile)file).getImportMap();
-    final Set<PsiElement> importEntriesToDelete = ContainerUtil.newLinkedHashSet();
-    final Set<PsiElement> importIdentifiersToDelete = findRedundantImportIdentifiers(importMap);
+    Set<PsiElement> importEntriesToDelete = ContainerUtil.newLinkedHashSet();
+    Set<PsiElement> importIdentifiersToDelete = findRedundantImportIdentifiers(importMap);
 
     importEntriesToDelete.addAll(findDuplicatedEntries(importMap));
     importEntriesToDelete.addAll(filterUnusedImports(file, importMap).values());
+    if (importEntriesToDelete.isEmpty() && importIdentifiersToDelete.isEmpty()) {
+      return EmptyRunnable.getInstance();
+    }
 
     return new CollectingInfoRunnable() {
       @Nullable
@@ -76,8 +78,12 @@ public class GoImportOptimizer implements ImportOptimizer {
 
       @Override
       public void run() {
-        if (!importEntriesToDelete.isEmpty() && !importIdentifiersToDelete.isEmpty()) {
-          commit(file);
+        if (!importEntriesToDelete.isEmpty() || !importIdentifiersToDelete.isEmpty()) {
+          PsiDocumentManager manager = PsiDocumentManager.getInstance(file.getProject());
+          Document document = manager.getDocument(file);
+          if (document != null) {
+            manager.commitDocument(document);
+          }
         }
 
         for (PsiElement importEntry : importEntriesToDelete) {
@@ -114,24 +120,15 @@ public class GoImportOptimizer implements ImportOptimizer {
 
   public static MultiMap<String, GoImportSpec> filterUnusedImports(@NotNull PsiFile file, 
                                                                    @NotNull MultiMap<String, GoImportSpec> importMap) {
-    final MultiMap<String, GoImportSpec> result = MultiMap.create();
+    MultiMap<String, GoImportSpec> result = MultiMap.create();
     result.putAllValues(importMap);
     result.remove("_"); // imports for side effects are always used
     
     Collection<GoImportSpec> implicitImports = ContainerUtil.newArrayList(result.get("."));
     for (GoImportSpec importEntry : implicitImports) {
       GoImportSpec spec = getImportSpec(importEntry);
-      if (spec != null && spec.isDot()) {
-        List<? extends PsiElement> list = spec.getUserData(GoReference.IMPORT_USERS);
-        if (list != null) {
-          for (PsiElement e : list) {
-            if (e.isValid()) {
-              result.remove(".", importEntry);
-              break;
-            }
-            ProgressManager.checkCanceled();
-          }
-        }
+      if (spec != null && spec.isDot() && hasImportUsers(spec)) {
+        result.remove(".", importEntry);
       }
     }
     
@@ -144,7 +141,7 @@ public class GoImportOptimizer implements ImportOptimizer {
           while ((previousQualifier = lastQualifier.getQualifier()) != null) {
             lastQualifier = previousQualifier;
           }
-          markAsUsed(lastQualifier.getIdentifier());
+          markAsUsed(lastQualifier.getIdentifier(), lastQualifier.getReference());
         }
       }
 
@@ -156,13 +153,22 @@ public class GoImportOptimizer implements ImportOptimizer {
           while ((previousQualifier = lastQualifier.getQualifier()) != null) {
             lastQualifier = previousQualifier;
           }
-          markAsUsed(lastQualifier.getIdentifier());
+          markAsUsed(lastQualifier.getIdentifier(), lastQualifier.getReference());
         }
       }
 
-      private void markAsUsed(@NotNull PsiElement qualifier) {
+      private void markAsUsed(@NotNull PsiElement qualifier, @NotNull PsiReference reference) {
+        String qualifierText = qualifier.getText();
+        if (!result.containsKey(qualifierText)) {
+          // already marked
+          return;
+        }
+        PsiElement resolve = reference.resolve();
+        if (!(resolve instanceof PsiDirectory || resolve instanceof GoImportSpec || resolve instanceof PsiDirectoryContainer)) {
+          return;
+        }
         Collection<String> qualifiersToDelete = ContainerUtil.newHashSet();
-        for (GoImportSpec spec : result.get(qualifier.getText())) {
+        for (GoImportSpec spec : result.get(qualifierText)) {
           for (Map.Entry<String, Collection<GoImportSpec>> entry : result.entrySet()) {
             for (GoImportSpec importSpec : entry.getValue()) {
               if (importSpec == spec) {
@@ -177,6 +183,22 @@ public class GoImportOptimizer implements ImportOptimizer {
       }
     });
     return result;
+  }
+
+  private static boolean hasImportUsers(@NotNull GoImportSpec spec) {
+    //noinspection SynchronizationOnLocalVariableOrMethodParameter
+    synchronized (spec) {
+      List<PsiElement> list = spec.getUserData(GoReferenceBase.IMPORT_USERS);
+      if (list != null) {
+        for (PsiElement e : list) {
+          if (e.isValid()) {
+            return true;
+          }
+          ProgressManager.checkCanceled();
+        }
+      }
+    }
+    return false;
   }
 
   @NotNull
@@ -236,13 +258,5 @@ public class GoImportOptimizer implements ImportOptimizer {
   @Nullable
   public static GoImportSpec getImportSpec(@NotNull PsiElement importEntry) {
     return PsiTreeUtil.getNonStrictParentOfType(importEntry, GoImportSpec.class);
-  }
-
-  private static void commit(@NotNull PsiFile file) {
-    PsiDocumentManager manager = PsiDocumentManager.getInstance(file.getProject());
-    Document document = manager.getDocument(file);
-    if (document != null) {
-      manager.commitDocument(document);
-    }
   }
 }

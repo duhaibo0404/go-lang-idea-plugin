@@ -78,7 +78,7 @@ public class DlvApi {
     // ID is a unique identifier for the thread.
     public int id;
     // PC is the current program counter for the thread.
-    public int pc;
+    public long pc;
     // File is the file for the program counter.
     public String file;
     // Line is the line number for the program counter.
@@ -88,7 +88,7 @@ public class DlvApi {
   }
 
   public static class Location {
-    public int pc;
+    public long pc;
     public String file;
     public int line;
     public Function function;
@@ -161,6 +161,15 @@ public class DlvApi {
       private boolean isNumber() {
         return compareTo(Int) >= 0 && compareTo(Complex128) <= 0;
       }
+
+    }
+    
+    public boolean isSlice() {
+      return getKind() == Kind.Slice;
+    }
+    
+    public boolean isArray() {
+      return getKind() == Kind.Array;
     }
 
     public boolean isNumber() { return getKind().isNumber(); }
@@ -168,6 +177,14 @@ public class DlvApi {
     public boolean isString() { return getKind() == Kind.String; }
 
     public boolean isBool() { return getKind() == Kind.Bool; }
+
+    public boolean isStructure() {
+      return getKind() == Kind.Struct;
+    }
+
+    public boolean isPtr() {
+      return getKind() == Kind.Ptr;
+    }
   }
 
   // Goroutine represents the information relevant to Delve from the runtime's
@@ -176,7 +193,7 @@ public class DlvApi {
     // ID is a unique identifier for the goroutine.
     public int id;
     // PC is the current program counter for the goroutine.
-    public int pc;
+    public long pc;
     // File is the file for the program counter.
     public String file;
     // Line is the line number for the program counter.

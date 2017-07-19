@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,10 @@
 package com.goide.runconfig.testing.ui;
 
 import com.goide.completion.GoImportPathsCompletionProvider;
+import com.goide.util.GoUtil;
 import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.openapi.module.Module;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.Producer;
 import com.intellij.util.TextFieldCompletionProvider;
 import org.jetbrains.annotations.NotNull;
@@ -35,6 +37,10 @@ public class GoPackageFieldCompletionProvider extends TextFieldCompletionProvide
                                        int offset,
                                        @NotNull String prefix,
                                        @NotNull CompletionResultSet result) {
-    GoImportPathsCompletionProvider.addCompletions(result, myModuleProducer.produce(), null, false);
+    Module module = myModuleProducer.produce();
+    if (module != null) {
+      GlobalSearchScope scope = GoUtil.moduleScopeWithoutLibraries(module.getProject(), module);
+      GoImportPathsCompletionProvider.addCompletions(result, module, null, scope, true);
+    }
   }
 }

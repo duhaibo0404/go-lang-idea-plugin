@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,28 +17,18 @@
 package com.goide.completion;
 
 import com.goide.GoCodeInsightFixtureTestCase;
-import com.goide.project.GoModuleLibrariesService;
 import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.testFramework.UsefulTestCase;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
 public abstract class GoCompletionTestBase extends GoCodeInsightFixtureTestCase {
-
-  @Override
-  protected void setUp() throws Exception {
-    super.setUp();
-    String url = myFixture.getTempDirFixture().getFile("..").getUrl();
-    GoModuleLibrariesService.getInstance(myModule).setLibraryRootUrls(url);
-  }
-
   @NotNull
   @Override
   protected String getBasePath() {
@@ -49,19 +39,18 @@ public abstract class GoCompletionTestBase extends GoCodeInsightFixtureTestCase 
     myFixture.testCompletion(getTestName(true) + ".go", getTestName(true) + "_after.go");
   }
 
-  protected enum CheckType {EQUALS, INCLUDES, EXCLUDES}
+  protected enum CheckType {EQUALS, INCLUDES, EXCLUDES, ORDERED_EQUALS}
 
   private void doTestVariantsInner(@NotNull CompletionType type, int count, CheckType checkType, String... variants) {
     myFixture.complete(type, count);
     List<String> stringList = myFixture.getLookupElementStrings();
 
-    assertNotNull(
-      "\nPossibly the single variant has been completed.\n" +
-      "File after:\n" +
-      myFixture.getFile().getText(),
-      stringList);
-    Collection<String> varList = new ArrayList<String>(Arrays.asList(variants));
-    if (checkType == CheckType.EQUALS) {
+    assertNotNull("\nPossibly the single variant has been completed.\nFile after:\n" + myFixture.getFile().getText(), stringList);
+    Collection<String> varList = ContainerUtil.newArrayList(variants);
+    if (checkType == CheckType.ORDERED_EQUALS) {
+      UsefulTestCase.assertOrderedEquals(stringList, variants);
+    }
+    else if (checkType == CheckType.EQUALS) {
       UsefulTestCase.assertSameElements(stringList, variants);
     }
     else if (checkType == CheckType.INCLUDES) {
@@ -75,7 +64,7 @@ public abstract class GoCompletionTestBase extends GoCodeInsightFixtureTestCase 
   }
 
   protected void doTestVariants(@NotNull String txt, @NotNull CompletionType type, int count, CheckType checkType, String... variants) {
-    myFixture.configureByText("a.go", txt);
+    myFixture.configureByText(getDefaultFileName(), txt);
     failOnFileLoading();
     doTestVariantsInner(type, count, checkType, variants);
   }
@@ -97,7 +86,7 @@ public abstract class GoCompletionTestBase extends GoCodeInsightFixtureTestCase 
   }
 
   protected void doCheckResult(@NotNull String before, @NotNull String after, @Nullable Character c) {
-    myFixture.configureByText("a.go", before);
+    myFixture.configureByText(getDefaultFileName(), before);
     failOnFileLoading();
     myFixture.completeBasic();
     if (c != null) myFixture.type(c);
@@ -105,7 +94,7 @@ public abstract class GoCompletionTestBase extends GoCodeInsightFixtureTestCase 
   }
   
   protected void doCheckResult(@NotNull String before, @NotNull String after, @NotNull String selectItem) {
-    myFixture.configureByText("a.go", before);
+    myFixture.configureByText(getDefaultFileName(), before);
     failOnFileLoading();
     myFixture.completeBasic();
     selectLookupItem(selectItem);
@@ -129,5 +118,9 @@ public abstract class GoCompletionTestBase extends GoCodeInsightFixtureTestCase 
 
   protected void failOnFileLoading() {
     //((PsiManagerImpl)myFixture.getPsiManager()).setAssertOnFileLoadingFilter(VirtualFileFilter.ALL, getTestRootDisposable());
+  }
+  
+  protected String getDefaultFileName() {
+    return "a.go";
   }
 }

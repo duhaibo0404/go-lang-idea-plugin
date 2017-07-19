@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,16 @@
 
 package com.goide.inspections;
 
+import com.goide.SdkAware;
 import com.goide.quickfix.GoQuickFixTestBase;
-import com.intellij.testFramework.LightProjectDescriptor;
 import org.jetbrains.annotations.NotNull;
 
+@SdkAware
 public class GoTestSignaturesInspectionTest extends GoQuickFixTestBase {
   @Override
   protected void setUp() throws Exception {
     super.setUp();
-    setUpProjectSdk();
     myFixture.enableInspections(GoTestSignaturesInspection.class);
-  }
-
-  @Override
-  protected LightProjectDescriptor getProjectDescriptor() {
-    return createMockProjectDescriptor();
   }
 
   @NotNull
@@ -47,10 +42,12 @@ public class GoTestSignaturesInspectionTest extends GoQuickFixTestBase {
     myFixture.checkResultByFile(testName + "_test-after.go");
   }
 
-  public void testExampleNonEmptySignature(){ doTest(); }
-  public void testTestNoTestingImport()     { doTest(); }
-  public void testTestWrongTestingAlias()   { doTest(); }
-  public void testTestLocalTestingImport()  { doTest(); }
-  public void testTestMain()                { doTest(); }
-  public void testBenchmark()               { doTest(); }
+  public void testExampleNonEmptySignature()  { doTest(); }
+  public void testTestNoTestingImport()       { doTest(); }
+  public void testTestWrongTestingAlias()     { doTest(); }
+  public void testTestLocalTestingImport()    { doTest(); }
+  public void testTestMain()                  { doTest(); }
+  public void testBenchmark()                 { doTest(); }
+  public void testExampleWithReturnValue()    { doTest(); }
+  public void testTestWithReturnValue()       { doTest(); }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,15 +19,11 @@ package com.goide.configuration;
 import com.goide.project.GoApplicationLibrariesService;
 import com.goide.project.GoModuleLibrariesService;
 import com.goide.project.GoProjectLibrariesService;
-import com.goide.sdk.GoSdkService;
 import com.goide.sdk.GoSdkUtil;
-import com.intellij.application.options.ModuleAwareProjectConfigurable;
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.options.CompositeConfigurable;
-import com.intellij.openapi.options.Configurable;
-import com.intellij.openapi.options.ConfigurableProvider;
-import com.intellij.openapi.options.UnnamedConfigurable;
+import com.intellij.openapi.options.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -35,7 +31,6 @@ import com.intellij.ui.HideableDecorator;
 import com.intellij.uiDesigner.core.GridConstraints;
 import com.intellij.uiDesigner.core.GridLayoutManager;
 import com.intellij.uiDesigner.core.Spacer;
-import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -61,7 +56,7 @@ public class GoLibrariesConfigurableProvider extends ConfigurableProvider {
   }
 
   @Nullable
-  public Configurable createConfigurable(final boolean dialogMode) {
+  private Configurable createConfigurable(boolean dialogMode) {
     return new CompositeConfigurable<UnnamedConfigurable>() {
 
       @Nullable
@@ -90,10 +85,10 @@ public class GoLibrariesConfigurableProvider extends ConfigurableProvider {
             ListenableHideableDecorator decorator = new ListenableHideableDecorator(hideablePanel, displayName, configurableComponent);
             decorator.addListener(new MyHideableDecoratorListener(layoutManager, hideablePanel,
                                                                   spacer, hideableDecorators,
-                                                                  configurableExpandedPropertyKey(((Configurable)configurable))
+                                                                  configurableExpandedPropertyKey((Configurable)configurable)
             ));
             hideableDecorators.add(decorator);
-            decorator.setOn(isConfigurableExpanded(i, ((Configurable)configurable)));
+            decorator.setOn(isConfigurableExpanded(i, (Configurable)configurable));
           }
         }
         if (dialogMode) {
@@ -107,24 +102,11 @@ public class GoLibrariesConfigurableProvider extends ConfigurableProvider {
       @Override
       protected List<UnnamedConfigurable> createConfigurables() {
         List<UnnamedConfigurable> result = ContainerUtil.newArrayList();
-
-        String[] urlsFromEnv = ContainerUtil.map2Array(ContainerUtil.mapNotNull(GoSdkUtil.getGoPathsRootsFromEnvironment(),
-                                                                                new GoSdkUtil.RetrieveSubDirectoryOrSelfFunction("src")),
-                                                       String.class, new Function<VirtualFile, String>() {
-            @Override
-            public String fun(VirtualFile file) {
-              return file.getUrl();
-            }
-          });
+        String[] urlsFromEnv = ContainerUtil.map2Array(GoSdkUtil.getGoPathsRootsFromEnvironment(), String.class, VirtualFile::getUrl);
         result.add(new GoLibrariesConfigurable("Global libraries", GoApplicationLibrariesService.getInstance(), urlsFromEnv));
         if (!myProject.isDefault()) {
           result.add(new GoLibrariesConfigurable("Project libraries", GoProjectLibrariesService.getInstance(myProject)));
-          result.add(new ModuleAwareProjectConfigurable(myProject, "Module libraries", "Module libraries") {
-            @Override
-            protected boolean isSuitableForModule(@NotNull Module module) {
-              return !myProject.isDisposed() && GoSdkService.getInstance(myProject).isGoModule(module);
-            }
-
+          result.add(new GoModuleAwareConfigurable(myProject, "Module libraries", null) {
             @NotNull
             @Override
             protected UnnamedConfigurable createModuleConfigurable(@NotNull Module module) {
@@ -227,5 +209,13 @@ public class GoLibrariesConfigurableProvider extends ConfigurableProvider {
         }
       }
     };
+  }
+
+  public static void showModulesConfigurable(@NotNull Project project) {
+    ApplicationManager.getApplication().assertIsDispatchThread();
+    if (!project.isDisposed()) {
+      Configurable configurable = new GoLibrariesConfigurableProvider(project).createConfigurable(true);
+      ShowSettingsUtil.getInstance().editConfigurable(project, configurable);
+    }
   }
 }

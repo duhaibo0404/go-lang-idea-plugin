@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package com.goide.inspections;
 
 import com.goide.psi.*;
+import com.goide.psi.impl.GoPsiImplUtil;
+import com.goide.psi.impl.GoTypeUtil;
 import com.intellij.codeInspection.LocalInspectionToolSession;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ProblemsHolder;
@@ -27,80 +29,103 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-import static com.goide.inspections.GoInspectionUtil.*;
+import static com.goide.inspections.GoInspectionUtil.UNKNOWN_COUNT;
+import static com.goide.inspections.GoInspectionUtil.getExpressionResultCount;
 
 public class GoVarDeclarationInspection extends GoInspectionBase {
   @NotNull
+  private static Pair<List<? extends GoCompositeElement>, List<GoExpression>> getPair(@NotNull GoVarSpec varDeclaration) {
+    PsiElement assign = varDeclaration instanceof GoShortVarDeclaration ? ((GoShortVarDeclaration)varDeclaration).getVarAssign()
+                                                                        : varDeclaration.getAssign();
+    if (assign == null) {
+      return Pair.create(ContainerUtil.emptyList(), ContainerUtil.emptyList());
+    }
+    if (varDeclaration instanceof GoRecvStatement) {
+      return Pair.create(((GoRecvStatement)varDeclaration).getLeftExpressionsList(), varDeclaration.getRightExpressionsList());
+    }
+    if (varDeclaration instanceof GoRangeClause) {
+      return Pair.create(((GoRangeClause)varDeclaration).getLeftExpressionsList(), varDeclaration.getRightExpressionsList());
+    }
+    return Pair.create(varDeclaration.getVarDefinitionList(), varDeclaration.getRightExpressionsList());
+  }
+
+  @NotNull
   @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder,
-                                     @SuppressWarnings({"UnusedParameters", "For future"}) @NotNull LocalInspectionToolSession session) {
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
     return new GoVisitor() {
       @Override
-      public void visitVarSpec(@NotNull GoVarSpec o) {
-        List<GoExpression> list = o.getExpressionList();
-        List<GoVarDefinition> vars = o.getVarDefinitionList();
+      public void visitAssignmentStatement(@NotNull GoAssignmentStatement o) {
+        validatePair(o, Pair.create(o.getLeftHandExprList().getExpressionList(), o.getExpressionList()));
+      }
 
-        if (list.size() == vars.size()) {
+      @Override
+      public void visitVarSpec(@NotNull GoVarSpec o) {
+        validatePair(o, getPair(o));
+      }
+
+      private void validatePair(@NotNull GoCompositeElement o, Pair<? extends List<? extends GoCompositeElement>, List<GoExpression>> p) {
+        List<GoExpression> list = p.second;
+        int idCount = p.first.size();
+        for (GoCompositeElement idElement : p.first) {
+          if (idElement instanceof GoIndexOrSliceExpr) {
+            GoType referenceType = GoPsiImplUtil.getIndexedExpressionReferenceType((GoIndexOrSliceExpr)idElement, null);
+            if (GoTypeUtil.isString(referenceType)) {
+              // https://golang.org/ref/spec#Index_expressions
+              // For a of string type: a[x] may not be assigned to
+              holder.registerProblem(idElement, "Cannot assign to <code>#ref</code> #loc");
+            }
+          }
+        }
+
+        int expressionsSize = list.size();
+        if (expressionsSize == 0) {
+          return;
+        }
+        if (idCount == expressionsSize) {
           checkExpressionShouldReturnOneResult(list, holder);
           return;
         }
 
-        if (list.size() == 0 && !(o instanceof GoShortVarDeclaration)) return;
-        checkVar(o, holder);
+        int exprCount = expressionsSize;
+        if (idCount == 2) {
+          if (o instanceof GoRangeClause) {
+            // range clause can be assigned to two variables
+            return;
+          }
+          if (expressionsSize == 1) {
+            GoExpression expression = list.get(0);
+            if (expression instanceof GoIndexOrSliceExpr) {
+              GoType referenceType = GoPsiImplUtil.getIndexedExpressionReferenceType((GoIndexOrSliceExpr)expression, null);
+              if (referenceType != null && referenceType.getUnderlyingType() instanceof GoMapType) {
+                // index expressions on maps can be assigned to two variables
+                return;
+              }
+            }
+          }
+        }
+        if (expressionsSize == 1) {
+          exprCount = getExpressionResultCount(list.get(0));
+          if (exprCount == UNKNOWN_COUNT || exprCount == idCount) return;
+        }
+
+        String msg = String.format("Assignment count mismatch: %d = %d", idCount, exprCount);
+        holder.registerProblem(o, msg, ProblemHighlightType.GENERIC_ERROR);
       }
     };
   }
 
-  public static void checkVar(@NotNull GoVarSpec varDeclaration, @NotNull ProblemsHolder holder) {
-    Pair<? extends List<? extends GoCompositeElement>, List<GoExpression>> p = getPair(varDeclaration);
-    List<GoExpression> list = p.second;
-    int idCount = p.first.size();
-    int expressionsSize = list.size();
-    if (idCount == expressionsSize) {
-      checkExpressionShouldReturnOneResult(list, holder);
-      return;
-    }
-
-    // var declaration could has no initialization expression, but short var declaration couldn't
-    if (expressionsSize == 0 && !(varDeclaration instanceof GoShortVarDeclaration)) {
-      return;
-    }
-
-    int exprCount = expressionsSize;
-
-    if (varDeclaration instanceof GoRangeClause && idCount == 2) {
-      // range clause can be assigned to two variables
-      return;  
-    }
-    if (expressionsSize == 1) {
-      exprCount = getExpressionResultCount(list.get(0));
-      if (exprCount == UNKNOWN_COUNT || exprCount == idCount) return;
-    }
-
-    String msg = String.format("Assignment count mismatch: %d = %d", idCount, exprCount);
-    holder.registerProblem(varDeclaration, msg, ProblemHighlightType.GENERIC_ERROR);
-  }
-
-  @NotNull
-  private static Pair<List<? extends GoCompositeElement>, List<GoExpression>> getPair(@NotNull GoVarSpec varDeclaration) {
-    PsiElement assign = varDeclaration.getAssign();
-    if (assign == null) {
-      return Pair.<List<? extends GoCompositeElement>, List<GoExpression>>create(ContainerUtil.<GoCompositeElement>emptyList(), ContainerUtil.<GoExpression>emptyList());
-    }
-    if (varDeclaration instanceof GoRecvStatement || varDeclaration instanceof GoRangeClause) {
-      List<GoCompositeElement> v= ContainerUtil.newArrayList();
-      List<GoExpression> e = ContainerUtil.newArrayList();
-      for (PsiElement c : varDeclaration.getChildren()) {
-        if (!(c instanceof GoCompositeElement)) continue;
-        if (c.getTextOffset() < assign.getTextOffset()) {
-          v.add(((GoCompositeElement)c));
+  private static void checkExpressionShouldReturnOneResult(@NotNull List<GoExpression> expressions, @NotNull ProblemsHolder result) {
+    for (GoExpression expr : expressions) {
+      int count = getExpressionResultCount(expr);
+      if (count != UNKNOWN_COUNT && count != 1) {
+        String text = expr.getText();
+        if (expr instanceof GoCallExpr) {
+          text = ((GoCallExpr)expr).getExpression().getText();
         }
-        else if (c instanceof GoExpression) {
-          e.add(((GoExpression)c));
-        }
+
+        String msg = count == 0 ? text + "() doesn't return a value" : "Multiple-value " + text + "() in single-value context";
+        result.registerProblem(expr, msg, ProblemHighlightType.GENERIC_ERROR);
       }
-      return Pair.<List<? extends GoCompositeElement>, List<GoExpression>>create(v, e);
     }
-    return Pair.<List<? extends GoCompositeElement>, List<GoExpression>>create(varDeclaration.getVarDefinitionList(), varDeclaration.getExpressionList());
   }
 }

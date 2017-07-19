@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,8 +35,10 @@ import com.intellij.util.containers.OrderedSet;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 
-public class GoTypeReference extends PsiPolyVariantReferenceBase<GoTypeReferenceExpression> {
+public class GoTypeReference extends GoReferenceBase<GoTypeReferenceExpression> {
   private final boolean myInsideInterfaceType;
 
   public GoTypeReference(@NotNull GoTypeReferenceExpression o) {
@@ -45,29 +47,15 @@ public class GoTypeReference extends PsiPolyVariantReferenceBase<GoTypeReference
   }
 
   private static final ResolveCache.PolyVariantResolver<PsiPolyVariantReferenceBase> MY_RESOLVER =
-    new ResolveCache.PolyVariantResolver<PsiPolyVariantReferenceBase>() {
-      @NotNull
-      @Override
-      public ResolveResult[] resolve(@NotNull PsiPolyVariantReferenceBase psiPolyVariantReferenceBase, boolean incompleteCode) {
-        return ((GoTypeReference)psiPolyVariantReferenceBase).resolveInner();
-      }
-  };
+    (psiPolyVariantReferenceBase, incompleteCode) -> ((GoTypeReference)psiPolyVariantReferenceBase).resolveInner();
 
   @NotNull
   private ResolveResult[] resolveInner() {
-    Collection<ResolveResult> result = new OrderedSet<ResolveResult>();
-    processResolveVariants(GoReference.createResolveProcessor(result, myElement));
-    
-    if (result.isEmpty() && myElement.getParent() instanceof GoReceiverType) {
-      PsiElement resolve = new GoReference(myElement).resolve();
-      if (resolve != null) {
-        return PsiElementResolveResult.createResults(resolve);
-      }
-    }
-    
+    Collection<ResolveResult> result = new OrderedSet<>();
+    processResolveVariants(createResolveProcessor(result, myElement));
     return result.toArray(new ResolveResult[result.size()]);
   }
-  
+
   @Override
   public boolean isReferenceTo(PsiElement element) {
     return GoUtil.couldBeReferenceTo(element, myElement) && super.isReferenceTo(element);
@@ -98,23 +86,23 @@ public class GoTypeReference extends PsiPolyVariantReferenceBase<GoTypeReference
     ResolveState state = ResolveState.initial();
     GoTypeReferenceExpression qualifier = myElement.getQualifier();
     if (qualifier != null) {
-      return processQualifierExpression(((GoFile)file), qualifier, processor, state);
+      return processQualifierExpression((GoFile)file, qualifier, processor, state);
     }
-    return processUnqualifiedResolve(((GoFile)file), processor, state, true);
+    return processUnqualifiedResolve((GoFile)file, processor, state, true);
   }
 
   private boolean processQualifierExpression(@NotNull GoFile file,
                                              @NotNull GoTypeReferenceExpression qualifier,
                                              @NotNull GoScopeProcessor processor,
                                              @NotNull ResolveState state) {
-    PsiElement target = qualifier.getReference().resolve();
+    PsiElement target = qualifier.resolve();
     if (target == null || target == qualifier) return false;
     if (target instanceof GoImportSpec) {
-      if (GoConstants.C_PATH.equals(((GoImportSpec)target).getPath())) return processor.execute(myElement, state);
+      if (((GoImportSpec)target).isCImport()) return processor.execute(myElement, state);
       target = ((GoImportSpec)target).getImportString().resolve();
     }
     if (target instanceof PsiDirectory) {
-      GoReference.processDirectory((PsiDirectory)target, file, null, processor, state, false);
+      processDirectory((PsiDirectory)target, file, null, processor, state, false);
     }
     return false;
   }
@@ -129,46 +117,44 @@ public class GoTypeReference extends PsiPolyVariantReferenceBase<GoTypeReference
     if (!processNamedElements(processor, state, result, localResolve)) return false;
     if (!processFileEntities(file, processor, state, localResolve)) return false;
     PsiDirectory dir = file.getOriginalFile().getParent();
-    if (!GoReference.processDirectory(dir, file, file.getPackageName(), processor, state, true)) return false;
-    if (!GoReference.processImports(file, processor, state, myElement)) return false;
+    if (!processDirectory(dir, file, file.getPackageName(), processor, state, true)) return false;
+    if (PsiTreeUtil.getParentOfType(getElement(), GoReceiver.class) != null) return true;
+    if (!processImports(file, processor, state, myElement)) return false;
     if (!processBuiltin(processor, state, myElement)) return false;
     if (getIdentifier().textMatches(GoConstants.NIL) && PsiTreeUtil.getParentOfType(myElement, GoTypeCaseClause.class) != null) {
       GoType type = PsiTreeUtil.getParentOfType(myElement, GoType.class);
       if (FormatterUtil.getPrevious(type != null ? type.getNode() : null, GoTypes.CASE) == null) return true;
       GoFile builtinFile = GoSdkUtil.findBuiltinFile(myElement);
       if (builtinFile == null) return false;
-      GoVarDefinition nil = ContainerUtil.find(builtinFile.getVars(), new Condition<GoVarDefinition>() {
-        @Override
-        public boolean value(GoVarDefinition v) {
-          return GoConstants.NIL.equals(v.getName());
-        }
-      });
+      GoVarDefinition nil = ContainerUtil.find(builtinFile.getVars(), v -> GoConstants.NIL.equals(v.getName()));
       if (nil != null && !processor.execute(nil, state)) return false;
     }
     return true;
   }
 
-  // todo: unify references, extract base class
-  private boolean processBuiltin(@NotNull GoScopeProcessor processor, @NotNull ResolveState state, @NotNull GoCompositeElement element) {
-    GoFile builtinFile = GoSdkUtil.findBuiltinFile(element);
-    return builtinFile == null || processFileEntities(builtinFile, processor, state, true);
-  }
+  public final static Set<String> DOC_ONLY_TYPES = ContainerUtil.set("Type", "Type1", "IntegerType", "FloatType", "ComplexType");
+  private static final Condition<GoTypeSpec> BUILTIN_TYPE = spec -> {
+    String name = spec.getName();
+    return name != null && !DOC_ONLY_TYPES.contains(name);
+  };
 
   @NotNull
   private GoTypeProcessor createDelegate(@NotNull GoScopeProcessor processor) {
     return new GoTypeProcessor(myElement, processor.isCompletion());
   }
 
-  private boolean processFileEntities(@NotNull GoFile file,
-                                      @NotNull GoScopeProcessor processor,
-                                      @NotNull ResolveState state,
-                                      boolean localProcessing) {
-    return processNamedElements(processor, state, file.getTypes(), localProcessing);
+  @Override
+  protected boolean processFileEntities(@NotNull GoFile file,
+                                        @NotNull GoScopeProcessor processor,
+                                        @NotNull ResolveState state,
+                                        boolean localProcessing) {
+    List<GoTypeSpec> types = GoPsiImplUtil.isBuiltinFile(file) ? ContainerUtil.filter(file.getTypes(), BUILTIN_TYPE) : file.getTypes();
+    return processNamedElements(processor, state, types, localProcessing);
   }
 
   private boolean processNamedElements(@NotNull PsiScopeProcessor processor,
-                                      @NotNull ResolveState state,
-                                      @NotNull Collection<? extends GoNamedElement> elements, boolean localResolve) {
+                                       @NotNull ResolveState state,
+                                       @NotNull Collection<? extends GoNamedElement> elements, boolean localResolve) {
     for (GoNamedElement definition : elements) {
       if (definition instanceof GoTypeSpec && !allowed((GoTypeSpec)definition)) continue;
       if ((definition.isPublic() || localResolve) && !processor.execute(definition, state)) return false;
@@ -177,7 +163,7 @@ public class GoTypeReference extends PsiPolyVariantReferenceBase<GoTypeReference
   }
 
   public boolean allowed(@NotNull GoTypeSpec definition) {
-    return !myInsideInterfaceType || (definition.getSpecType().getType() instanceof GoInterfaceType);
+    return !myInsideInterfaceType || definition.getSpecType().getType() instanceof GoInterfaceType;
   }
 
   @Override

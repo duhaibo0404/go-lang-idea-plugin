@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@ package com.goide.inspections;
 
 import com.goide.psi.*;
 import com.goide.psi.impl.GoPsiImplUtil;
-import com.intellij.codeInspection.ProblemHighlightType;
-import com.intellij.codeInspection.ProblemsHolder;
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
 
@@ -28,19 +26,30 @@ import java.util.List;
 public class GoInspectionUtil {
   public static final int UNKNOWN_COUNT = -1;
 
+  private GoInspectionUtil() {}
+
   public static int getExpressionResultCount(GoExpression call) {
-    if (call instanceof GoLiteral || call instanceof GoStringLiteral || call instanceof GoBinaryExpr || call instanceof GoParenthesesExpr ||
-        (call instanceof GoUnaryExpr && ((GoUnaryExpr)call).getSendChannel() == null) || call instanceof GoBuiltinCallExpr) {
+    if (call instanceof GoLiteral || call instanceof GoStringLiteral || call instanceof GoBinaryExpr ||
+        call instanceof GoUnaryExpr && ((GoUnaryExpr)call).getSendChannel() == null || call instanceof GoBuiltinCallExpr ||
+        call instanceof GoCompositeLit || call instanceof GoIndexOrSliceExpr || call instanceof GoFunctionLit) {
       return 1;
     }
-    else if (call instanceof GoTypeAssertionExpr) {
+    if (call instanceof GoParenthesesExpr) {
+      return getExpressionResultCount(((GoParenthesesExpr)call).getExpression());
+    }
+    if (call instanceof GoTypeAssertionExpr) {
       return getTypeAssertionResultCount((GoTypeAssertionExpr)call);
     }
-    else if (call instanceof GoCallExpr) {
+    if (GoPsiImplUtil.isConversionExpression(call)) {
+      return 1;
+    }
+    if (call instanceof GoCallExpr) {
       return getFunctionResultCount((GoCallExpr)call);
     }
-    else if (call instanceof GoReferenceExpression) {
-      if (((GoReferenceExpression)call).getReference().resolve() instanceof GoVarDefinition) return 1;
+    if (call instanceof GoReferenceExpression) {
+      // todo: always 1?
+      PsiElement resolve = ((GoReferenceExpression)call).resolve();
+      if (resolve instanceof GoVarDefinition || resolve instanceof GoParamDefinition || resolve instanceof GoReceiver) return 1;
     }
     return UNKNOWN_COUNT;
   }
@@ -57,7 +66,7 @@ public class GoInspectionUtil {
     }
 
     List<GoVarDefinition> identifiers = ((GoVarSpec)parent).getVarDefinitionList();
-    List<GoExpression> expressions = ((GoVarSpec)parent).getExpressionList();
+    List<GoExpression> expressions = ((GoVarSpec)parent).getRightExpressionsList();
     // if the type assertion is the only expression, and there are two variables.
     // The result of the type assertion is a pair of values with types (T, bool)
     if (identifiers.size() == 2 && expressions.size() == 1) {
@@ -67,7 +76,7 @@ public class GoInspectionUtil {
     return 1;
   }
 
-  private static int getFunctionResultCount(@NotNull GoCallExpr call) {
+  public static int getFunctionResultCount(@NotNull GoCallExpr call) {
     GoSignatureOwner signatureOwner = GoPsiImplUtil.resolveCall(call);
     return signatureOwner == null ? UNKNOWN_COUNT : getFunctionResultCount(signatureOwner);
   }
@@ -83,26 +92,11 @@ public class GoInspectionUtil {
       }
       return count;
     }
-    else if (result != null) {
+    if (result != null) {
       GoType type = result.getType();
       if (type instanceof GoTypeList) return ((GoTypeList)type).getTypeList().size();
       if (type != null) return 1;
     }
     return count;
-  }
-
-  public static void checkExpressionShouldReturnOneResult(@NotNull List<GoExpression> expressions, @NotNull ProblemsHolder result) {
-    for (GoExpression expr : expressions) {
-      int count = getExpressionResultCount(expr);
-      if (count != UNKNOWN_COUNT && count != 1) {
-        String text = expr.getText();
-        if (expr instanceof GoCallExpr) {
-          text = ((GoCallExpr)expr).getExpression().getText();
-        }
-
-        String msg = count == 0 ? text + "() doesn't return a value" : "Multiple-value " + text + "() in single-value context";
-        result.registerProblem(expr, msg, ProblemHighlightType.GENERIC_ERROR);
-      }
-    }
   }
 }

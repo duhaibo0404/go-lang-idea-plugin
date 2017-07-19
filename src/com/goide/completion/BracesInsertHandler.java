@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,13 +37,13 @@ public class BracesInsertHandler implements InsertHandler<LookupElement> {
   
   private final boolean myOneLine;
 
-  public BracesInsertHandler(boolean oneLine) {
+  private BracesInsertHandler(boolean oneLine) {
     myOneLine = oneLine;
   }
 
   @Override
   public void handleInsert(@NotNull InsertionContext context, LookupElement item) {
-    final Editor editor = context.getEditor();
+    Editor editor = context.getEditor();
     CharSequence documentText = context.getDocument().getImmutableCharSequence();
     int offset = skipWhiteSpaces(editor.getCaretModel().getOffset(), documentText);
     if (documentText.charAt(offset) != '{') {
@@ -54,12 +54,9 @@ public class BracesInsertHandler implements InsertHandler<LookupElement> {
     }
     else {
       editor.getCaretModel().moveToOffset(offset);
-      ApplicationManager.getApplication().runWriteAction(new Runnable() {
-        @Override
-        public void run() {
-          EditorActionHandler enterAction = EditorActionManager.getInstance().getActionHandler(IdeActions.ACTION_EDITOR_START_NEW_LINE);
-          enterAction.execute(editor, editor.getCaretModel().getCurrentCaret(), ((EditorEx)editor).getDataContext());
-        }
+      ApplicationManager.getApplication().runWriteAction(() -> {
+        EditorActionHandler enterAction = EditorActionManager.getInstance().getActionHandler(IdeActions.ACTION_EDITOR_START_NEW_LINE);
+        enterAction.execute(editor, editor.getCaretModel().getCurrentCaret(), ((EditorEx)editor).getDataContext());
       });
     }
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import com.goide.psi.impl.GoPsiImplUtil;
 import com.intellij.codeInspection.LocalInspectionToolSession;
 import com.intellij.codeInspection.ProblemsHolder;
 import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiReference;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -30,21 +29,22 @@ import java.util.List;
 public class GoFunctionCallInspection extends GoInspectionBase {
   @NotNull
   @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
     return new GoVisitor() {
       @Override
       public void visitCallExpr(@NotNull GoCallExpr o) {
         super.visitCallExpr(o);
-
+        PsiElement resolve = GoPsiImplUtil.resolveCallRaw(o); 
         GoExpression expression = o.getExpression();
-        if (expression instanceof GoReferenceExpression) {
-          PsiReference reference = expression.getReference();
-          PsiElement resolve = reference != null ? reference.resolve() : null;
-          if (resolve == null) return;
-
+        if (resolve != null && expression instanceof GoReferenceExpression) {
           List<GoExpression> list = o.getArgumentList().getExpressionList();
           int actualSize = list.size();
-          if (resolve instanceof GoSignatureOwner) {
+          if (resolve instanceof GoTypeSpec && actualSize != 1) {
+            String message = String.format("%sto conversion to %s: %s.", actualSize == 0 ? "Missing argument " : "Too many arguments ",
+                                           expression.getText(), o.getText());
+            holder.registerProblem(o, message);
+          }
+          else if (resolve instanceof GoSignatureOwner) {
             GoSignature signature = ((GoSignatureOwner)resolve).getSignature();
             if (signature == null) return;
             int expectedSize = 0;
@@ -62,15 +62,15 @@ public class GoFunctionCallInspection extends GoInspectionBase {
                 actualSize = GoInspectionUtil.getFunctionResultCount(firstResolve);
               }
             }
-            
+
             GoReferenceExpression qualifier = ((GoReferenceExpression)expression).getQualifier();
-            boolean isMethodExpr = qualifier != null && qualifier.getReference().resolve() instanceof GoTypeSpec;
+            boolean isMethodExpr = qualifier != null && qualifier.resolve() instanceof GoTypeSpec;
             if (isMethodExpr) actualSize -= 1; // todo: a temp workaround for method specs
 
             if (actualSize == expectedSize) return;
 
             String tail = " arguments in call to " + expression.getText();
-            holder.registerProblem(o.getArgumentList(), actualSize > expectedSize ? "too many" + tail : "not enough" + tail);
+            holder.registerProblem(o.getArgumentList(), (actualSize > expectedSize ? "too many" : "not enough") + tail);
           }
         }
       }

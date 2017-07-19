@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ public class GoColorsAndFontsPage implements ColorSettingsPage {
     new AttributesDescriptor("Type specification", TYPE_SPECIFICATION),
     new AttributesDescriptor("Type reference", TYPE_REFERENCE),
     new AttributesDescriptor("Builtin type", BUILTIN_TYPE_REFERENCE),
+    new AttributesDescriptor("Builtin function", BUILTIN_FUNCTION),
     new AttributesDescriptor("Exported function", EXPORTED_FUNCTION),
     new AttributesDescriptor("Local function", LOCAL_FUNCTION),
     new AttributesDescriptor("Package exported interface", PACKAGE_EXPORTED_INTERFACE),
@@ -74,6 +75,7 @@ public class GoColorsAndFontsPage implements ColorSettingsPage {
     ATTRIBUTES_KEY_MAP.put("tr", TYPE_REFERENCE);
     ATTRIBUTES_KEY_MAP.put("ts", TYPE_SPECIFICATION);
     ATTRIBUTES_KEY_MAP.put("bt", BUILTIN_TYPE_REFERENCE);
+    ATTRIBUTES_KEY_MAP.put("bf", BUILTIN_FUNCTION);
     ATTRIBUTES_KEY_MAP.put("kw", KEYWORD);
     ATTRIBUTES_KEY_MAP.put("ef", EXPORTED_FUNCTION);
     ATTRIBUTES_KEY_MAP.put("lf", LOCAL_FUNCTION);
@@ -95,30 +97,36 @@ public class GoColorsAndFontsPage implements ColorSettingsPage {
     ATTRIBUTES_KEY_MAP.put("ll", LABEL);
   }
 
+  @Override
   @NotNull
   public String getDisplayName() {
     return GoFileType.INSTANCE.getName();
   }
 
+  @Override
   public Icon getIcon() {
     return GoFileType.INSTANCE.getIcon();
   }
 
+  @Override
   @NotNull
   public AttributesDescriptor[] getAttributeDescriptors() {
     return DESCRIPTORS;
   }
 
+  @Override
   @NotNull
   public ColorDescriptor[] getColorDescriptors() {
     return ColorDescriptor.EMPTY_ARRAY;
   }
 
+  @Override
   @NotNull
   public SyntaxHighlighter getHighlighter() {
     return new GoSyntaxHighlighter();
   }
 
+  @Override
   @NotNull
   public String getDemoText() {
     return "/*\n" +
@@ -193,11 +201,11 @@ public class GoColorsAndFontsPage implements ColorSettingsPage {
            "}\n" +
            "\n" +
            "func <lf>variableFunc</lf>(<fp>demo1</fp> <bt>int</bt>) {\n" +
-           "    <fp>demo1</fpm> = 3\n" +
+           "    <fp>demo1</fp> = 3\n" +
            "    <lv>a</lv> := <tr>PublicStruct</tr>{}\n" +
            "    <lv>a</lv>.<lf>privateFunc</lf>()\n" +
            "    <lv>demo2</lv> := 4\n" +
-           "    if <sv>demo1</sv>, <sv>demo2</sv> := <lf>privateFunc</lf>(); <pv>demo1</pv> != 3 {\n" +
+           "    if <sv>demo1</sv>, <sv>demo2</sv> := <lf>privateFunc</lf>(); <sv>demo1</sv> != 3 {\n" +
            "        _ = <sv>demo1</sv>\n" +
            "        _ = <sv>demo2</sv>\n" +
            "        return\n" +
@@ -225,6 +233,7 @@ public class GoColorsAndFontsPage implements ColorSettingsPage {
            "    _ = <lf>variableFunc</lf>(1)\n" +
            "    _ = <fp>demo1</fp>\n" +
            "    _ = <lv>demo2</lv>\n" +
+           "    <bf>println</bf>(\"builtin function\")" +
            "\n" +
            "}\n" +
            "\n" +
@@ -237,6 +246,7 @@ public class GoColorsAndFontsPage implements ColorSettingsPage {
            "}\n";
   }
 
+  @Override
   @NotNull
   public Map<String, TextAttributesKey> getAdditionalHighlightingTagToDescriptorMap() {
     return ATTRIBUTES_KEY_MAP;

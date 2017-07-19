@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import com.goide.psi.GoNamedElement;
 import com.intellij.navigation.ChooseByNameContributorEx;
 import com.intellij.navigation.GotoClassContributor;
 import com.intellij.navigation.NavigationItem;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.stubs.StubIndex;
@@ -32,9 +33,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class GoGotoContributorBase<T extends GoNamedElement> implements GotoClassContributor, ChooseByNameContributorEx {
-  protected final StubIndexKey<String, T>[] myIndexKeys;
+  private final StubIndexKey<String, T>[] myIndexKeys;
   @NotNull private final Class<T> myClazz;
 
+  @SafeVarargs
   public GoGotoContributorBase(@NotNull Class<T> clazz, @NotNull StubIndexKey<String, T>... key) {
     myIndexKeys = key;
     myClazz = clazz;
@@ -55,6 +57,7 @@ public class GoGotoContributorBase<T extends GoNamedElement> implements GotoClas
   @Override
   public void processNames(@NotNull Processor<String> processor, @NotNull GlobalSearchScope scope, IdFilter filter) {
     for (StubIndexKey<String, T> key : myIndexKeys) {
+      ProgressManager.checkCanceled();
       StubIndex.getInstance().processAllKeys(key, processor, scope, filter);
     }
   }
@@ -64,6 +67,7 @@ public class GoGotoContributorBase<T extends GoNamedElement> implements GotoClas
                                       @NotNull Processor<NavigationItem> processor,
                                       @NotNull FindSymbolParameters parameters) {
     for (StubIndexKey<String, T> key : myIndexKeys) {
+      ProgressManager.checkCanceled();
       StubIndex.getInstance().processElements(key, s, parameters.getProject(), parameters.getSearchScope(), parameters.getIdFilter(), 
                                               myClazz, processor);
     }
@@ -72,16 +76,12 @@ public class GoGotoContributorBase<T extends GoNamedElement> implements GotoClas
   @Nullable
   @Override
   public String getQualifiedName(NavigationItem item) {
-    if (item instanceof GoNamedElement) {
-      return ((GoNamedElement)item).getQualifiedName();
-    }
-    return null;
+    return item instanceof GoNamedElement ? ((GoNamedElement)item).getQualifiedName() : null;
   }
 
   @Nullable
   @Override
   public String getQualifiedNameSeparator() {
-    // todo[IDEA 15.1]: replace with null 
-    return ".";
+    return null;
   }
 }

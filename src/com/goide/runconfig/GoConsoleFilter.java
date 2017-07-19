@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 package com.goide.runconfig;
 
 import com.goide.codeInsight.imports.GoGetPackageFix;
-import com.goide.sdk.GoSdkUtil;
+import com.goide.sdk.GoPackageUtil;
+import com.goide.util.GoPathResolveScope;
 import com.goide.util.GoUtil;
 import com.intellij.execution.filters.Filter;
 import com.intellij.execution.filters.HyperlinkInfo;
@@ -31,14 +32,15 @@ import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.ex.temp.TempFileSystem;
-import com.intellij.psi.PsiFile;
 import com.intellij.psi.search.FilenameIndex;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.PathUtil;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -158,14 +160,22 @@ public class GoConsoleFilter implements Filter {
   @Nullable
   private VirtualFile findSingleFile(@NotNull String fileName) {
     if (PathUtil.isValidFileName(fileName)) {
-      PsiFile[] files = FilenameIndex.getFilesByName(myProject, fileName, GoUtil.moduleScope(myProject, myModule));
-      if (files.length == 1) {
-        return files[0].getVirtualFile();
+      Collection<VirtualFile> files = FilenameIndex.getVirtualFilesByName(myProject, fileName, GlobalSearchScope.allScope(myProject));
+      if (files.size() == 1) {
+        return ContainerUtil.getFirstItem(files);
       }
-      else if (files.length > 0 && myModule != null) {
-        files = FilenameIndex.getFilesByName(myProject, fileName, GoUtil.moduleScopeWithoutLibraries(myModule));
-        if (files.length == 1) {
-          return files[0].getVirtualFile();
+      if (!files.isEmpty()) {
+        GlobalSearchScope goPathScope = GoPathResolveScope.create(myProject, myModule, null);
+        files = ContainerUtil.filter(files, goPathScope::accept);
+        if (files.size() == 1) {
+          return ContainerUtil.getFirstItem(files);
+        }
+      }
+      if (!files.isEmpty()) {
+        GlobalSearchScope smallerScope = GoUtil.moduleScopeWithoutLibraries(myProject, myModule);
+        files = ContainerUtil.filter(files, smallerScope::accept);
+        if (files.size() == 1) {
+          return ContainerUtil.getFirstItem(files);
         }
       }
     }
@@ -174,11 +184,7 @@ public class GoConsoleFilter implements Filter {
 
   @Nullable
   private VirtualFile findInGoPath(@NotNull String fileName) {
-    for (VirtualFile goPathSrc : GoSdkUtil.getGoPathSources(myProject, myModule)) {
-      VirtualFile virtualFile = goPathSrc.findFileByRelativePath(fileName);
-      if (virtualFile != null) return virtualFile;
-    }
-    return null;
+    return GoPackageUtil.findByImportPath(fileName, myProject, myModule);
   }
 
   public static class GoGetHyperlinkInfo implements HyperlinkInfo {

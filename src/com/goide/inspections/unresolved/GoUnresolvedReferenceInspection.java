@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.goide.codeInsight.imports.GoImportPackageQuickFix;
 import com.goide.inspections.GoInspectionBase;
 import com.goide.psi.*;
 import com.goide.psi.impl.GoReference;
+import com.intellij.codeInsight.highlighting.ReadWriteAccessDetector;
 import com.intellij.codeInspection.LocalInspectionToolSession;
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemHighlightType;
@@ -32,8 +33,12 @@ import com.intellij.psi.ResolveResult;
 import com.intellij.psi.formatter.FormatterUtil;
 import com.intellij.psi.impl.source.resolve.reference.impl.providers.FileReference;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Collection;
+import java.util.List;
 
 import static com.intellij.codeInspection.ProblemHighlightType.GENERIC_ERROR_OR_WARNING;
 import static com.intellij.codeInspection.ProblemHighlightType.LIKE_UNKNOWN_SYMBOL;
@@ -41,16 +46,15 @@ import static com.intellij.codeInspection.ProblemHighlightType.LIKE_UNKNOWN_SYMB
 public class GoUnresolvedReferenceInspection extends GoInspectionBase {
   @NotNull
   @Override
-  protected GoVisitor buildGoVisitor(@NotNull final ProblemsHolder holder,
-                                     @SuppressWarnings({"UnusedParameters", "For future"}) @NotNull LocalInspectionToolSession session) {
+  protected GoVisitor buildGoVisitor(@NotNull ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
     return new GoVisitor() {
       @Override
       public void visitFieldName(@NotNull GoFieldName o) {
         super.visitFieldName(o);
-        PsiElement resolve = o.getReference().resolve();
+        PsiElement resolve = o.resolve();
         if (resolve == null) {
           PsiElement id = o.getIdentifier();
-          holder.registerProblem(id, "unknown field '" + id.getText() + "' in struct literal", LIKE_UNKNOWN_SYMBOL);
+          holder.registerProblem(id, "Unknown field <code>#ref</code> in struct literal #loc", LIKE_UNKNOWN_SYMBOL);
         }
       }
 
@@ -71,14 +75,35 @@ public class GoUnresolvedReferenceInspection extends GoInspectionBase {
         else if (reference.resolve() == null) {
           LocalQuickFix[] fixes = LocalQuickFix.EMPTY_ARRAY;
           if (isProhibited(o, qualifier)) {
-            fixes = createImportPackageFixes(o, reference);
+            fixes = createImportPackageFixes(o, reference, holder.isOnTheFly());
           }
           else if (holder.isOnTheFly()) {
-            fixes = new LocalQuickFix[]{
-              new GoIntroduceLocalVariableFix(id, name),
-              new GoIntroduceGlobalVariableFix(id, name),
-              new GoIntroduceGlobalConstantFix(id, name),
-            };
+            boolean canBeLocal = PsiTreeUtil.getParentOfType(o, GoBlock.class) != null;
+            List<LocalQuickFix> fixesList = ContainerUtil.newArrayList(new GoIntroduceGlobalVariableFix(id, name));
+            if (canBeLocal) {
+              fixesList.add(new GoIntroduceLocalVariableFix(id, name));
+            }
+            PsiElement parent = o.getParent();
+            if (o.getReadWriteAccess() == ReadWriteAccessDetector.Access.Read) {
+              fixesList.add(new GoIntroduceGlobalConstantFix(id, name));
+              if (canBeLocal) {
+                fixesList.add(new GoIntroduceLocalConstantFix(id, name));
+              }
+            }
+            else if (canBeLocal) {
+              PsiElement grandParent = parent.getParent();
+              if (grandParent instanceof GoAssignmentStatement) {
+                fixesList.add(new GoReplaceAssignmentWithDeclarationQuickFix(grandParent));
+              }
+              else if (parent instanceof GoRangeClause || parent instanceof GoRecvStatement) {
+                fixesList.add(new GoReplaceAssignmentWithDeclarationQuickFix(parent));
+              }
+            }
+
+            if (parent instanceof GoCallExpr && PsiTreeUtil.getParentOfType(o, GoConstDeclaration.class) == null) {
+              fixesList.add(new GoIntroduceFunctionFix(parent, name));
+            }
+            fixes = fixesList.toArray(new LocalQuickFix[fixesList.size()]);
           }
           holder.registerProblem(id, "Unresolved reference " + "'" + name + "'", LIKE_UNKNOWN_SYMBOL, fixes);
         }
@@ -96,9 +121,6 @@ public class GoUnresolvedReferenceInspection extends GoInspectionBase {
             if (resolveResults.length == 0) {
               ProblemHighlightType type = reference.getRangeInElement().isEmpty() ? GENERIC_ERROR_OR_WARNING : LIKE_UNKNOWN_SYMBOL;
               holder.registerProblem(reference, ProblemsHolder.unresolvedReferenceMessage(reference), type);
-            }
-            else if (resolveResults.length > 1 && ((FileReference)reference).isLast()) {
-              holder.registerProblem(reference, "Resolved to several targets", GENERIC_ERROR_OR_WARNING);
             }
           }
         }
@@ -118,8 +140,7 @@ public class GoUnresolvedReferenceInspection extends GoInspectionBase {
         super.visitTypeReferenceExpression(o);
         PsiReference reference = o.getReference();
         GoTypeReferenceExpression qualifier = o.getQualifier();
-        PsiReference qualifierRef = qualifier != null ? qualifier.getReference() : null;
-        PsiElement qualifierResolve = qualifierRef != null ? qualifierRef.resolve() : null;
+        PsiElement qualifierResolve = qualifier != null ? qualifier.resolve() : null;
         if (qualifier != null && qualifierResolve == null) return;
         if (reference.resolve() == null) {
           PsiElement id = o.getIdentifier();
@@ -127,7 +148,7 @@ public class GoUnresolvedReferenceInspection extends GoInspectionBase {
           boolean isProhibited = isProhibited(o, qualifier);
           LocalQuickFix[] fixes = LocalQuickFix.EMPTY_ARRAY;
           if (isProhibited) {
-            fixes = createImportPackageFixes(o, reference);
+            fixes = createImportPackageFixes(o, reference, holder.isOnTheFly());
           }
           else if (holder.isOnTheFly()) {
             fixes = new LocalQuickFix[]{new GoIntroduceTypeFix(id, name)};
@@ -139,15 +160,30 @@ public class GoUnresolvedReferenceInspection extends GoInspectionBase {
   }
 
   @NotNull
-  private static LocalQuickFix[] createImportPackageFixes(@NotNull PsiElement target, @NotNull PsiReference reference) {
-    GoImportPackageQuickFix importFix = new GoImportPackageQuickFix(reference);
-    return importFix.isAvailable(target.getProject(), target.getContainingFile(), target, target)
-           ? new LocalQuickFix[]{importFix}
-           : LocalQuickFix.EMPTY_ARRAY;
+  private static LocalQuickFix[] createImportPackageFixes(@NotNull PsiElement target, @NotNull PsiReference reference, boolean onTheFly) {
+    if (onTheFly) {
+      GoImportPackageQuickFix importFix = new GoImportPackageQuickFix(reference);
+      if (importFix.isAvailable(target.getProject(), target.getContainingFile(), target, target)) {
+        return new LocalQuickFix[]{importFix};
+      }
+    }
+    else {
+      List<String> packagesToImport = GoImportPackageQuickFix.getImportPathVariantsToImport(reference.getCanonicalText(), target);
+      if (!packagesToImport.isEmpty()) {
+        Collection<LocalQuickFix> result = ContainerUtil.newArrayList();
+        for (String importPath : packagesToImport) {
+          GoImportPackageQuickFix importFix = new GoImportPackageQuickFix(target, importPath);
+          if (importFix.isAvailable(target.getProject(), target.getContainingFile(), target, target)) {
+            result.add(importFix);
+          }
+        }
+        return result.toArray(new LocalQuickFix[result.size()]);
+      }
+    }
+    return LocalQuickFix.EMPTY_ARRAY;
   }
 
   private static boolean isProhibited(@NotNull GoCompositeElement o, @Nullable GoCompositeElement qualifier) {
-    if (PsiTreeUtil.getPrevSiblingOfType(o, GoReceiverType.class) != null) return true;
     ASTNode next = FormatterUtil.getNextNonWhitespaceSibling(o.getNode());
     boolean isDot = next != null && next.getElementType() == GoTypes.DOT;
     return isDot || qualifier != null;

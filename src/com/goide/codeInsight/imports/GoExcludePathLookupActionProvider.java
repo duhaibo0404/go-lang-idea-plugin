@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,8 +38,8 @@ public class GoExcludePathLookupActionProvider implements LookupActionProvider {
   @Override
   public void fillActions(LookupElement element, Lookup lookup, Consumer<LookupElementAction> consumer) {
     PsiElement psiElement = element.getPsiElement();
-    PsiFile file = psiElement != null ? psiElement.getContainingFile() : null;
-    String importPath = file instanceof GoFile ? ((GoFile)file).getImportPath() : null;
+    PsiFile file = psiElement != null && psiElement.isValid() ? psiElement.getContainingFile() : null;
+    String importPath = file instanceof GoFile ? ((GoFile)file).getImportPath(false) : null;
     if (importPath != null) {
       Project project = psiElement.getProject();
       for (String path : getPaths(importPath)) {
@@ -69,17 +69,9 @@ public class GoExcludePathLookupActionProvider implements LookupActionProvider {
 
     @Override
     public Result performLookupAction() {
-      ApplicationManager.getApplication().invokeLater(new Runnable() {
-        @Override
-        public void run() {
-          final GoAutoImportConfigurable configurable = new GoAutoImportConfigurable(myProject, true);
-          ShowSettingsUtil.getInstance().editConfigurable(myProject, configurable, new Runnable() {
-              @Override
-              public void run() {
-                configurable.focusList();
-              }
-            });
-        }
+      ApplicationManager.getApplication().invokeLater(() -> {
+        GoAutoImportConfigurable configurable = new GoAutoImportConfigurable(myProject, true);
+        ShowSettingsUtil.getInstance().editConfigurable(myProject, configurable, configurable::focusList);
       });
       return Result.HIDE_LOOKUP;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import org.jetbrains.annotations.*;
 import com.intellij.lang.ASTNode;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementVisitor;
-import com.intellij.psi.util.PsiTreeUtil;
+import com.goide.psi.GoPsiTreeUtil;
 import static com.goide.GoTypes.*;
 import com.goide.stubs.GoImportSpecStub;
 import com.goide.psi.*;
@@ -30,23 +30,27 @@ import com.intellij.psi.stubs.IStubElementType;
 
 public class GoImportSpecImpl extends GoNamedElementImpl<GoImportSpecStub> implements GoImportSpec {
 
-  public GoImportSpecImpl(ASTNode node) {
-    super(node);
-  }
-
   public GoImportSpecImpl(GoImportSpecStub stub, IStubElementType nodeType) {
     super(stub, nodeType);
   }
 
+  public GoImportSpecImpl(ASTNode node) {
+    super(node);
+  }
+
+  public void accept(@NotNull GoVisitor visitor) {
+    visitor.visitImportSpec(this);
+  }
+
   public void accept(@NotNull PsiElementVisitor visitor) {
-    if (visitor instanceof GoVisitor) ((GoVisitor)visitor).visitImportSpec(this);
+    if (visitor instanceof GoVisitor) accept((GoVisitor)visitor);
     else super.accept(visitor);
   }
 
   @Override
   @NotNull
   public GoImportString getImportString() {
-    return findNotNullChildByClass(GoImportString.class);
+    return notNullChild(GoPsiTreeUtil.getChildOfType(this, GoImportString.class));
   }
 
   @Override
@@ -90,7 +94,6 @@ public class GoImportSpecImpl extends GoNamedElementImpl<GoImportSpecStub> imple
     return GoPsiImplUtil.getName(this);
   }
 
-  @NotNull
   public boolean isCImport() {
     return GoPsiImplUtil.isCImport(this);
   }

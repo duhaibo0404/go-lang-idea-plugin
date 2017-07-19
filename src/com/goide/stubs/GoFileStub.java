@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2015 Sergey Ignatov, Alexander Zolotov, Florin Patan
+ * Copyright 2013-2016 Sergey Ignatov, Alexander Zolotov, Florin Patan
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,31 +18,28 @@ package com.goide.stubs;
 
 import com.goide.GoFileElementType;
 import com.goide.psi.GoFile;
+import com.goide.psi.GoPackageClause;
+import com.goide.stubs.types.GoPackageClauseStubElementType;
 import com.intellij.psi.stubs.PsiFileStubImpl;
+import com.intellij.psi.stubs.StubElement;
 import com.intellij.psi.tree.IStubFileElementType;
 import com.intellij.util.io.StringRef;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class GoFileStub extends PsiFileStubImpl<GoFile> {
-  private final StringRef myPackageName;
   private final StringRef myBuildFlags;
 
   public GoFileStub(@NotNull GoFile file) {
-    this(file, StringRef.fromNullableString(file.getPackageName()), StringRef.fromNullableString(file.getBuildFlags()));
+    this(file, StringRef.fromNullableString(file.getBuildFlags()));
   }
 
-  public GoFileStub(@Nullable GoFile file, StringRef packageName, StringRef buildFlags) {
+  public GoFileStub(@Nullable GoFile file, StringRef buildFlags) {
     super(file);
-    myPackageName = packageName;
     myBuildFlags = buildFlags;
   }
 
-  @Nullable
-  public String getPackageName() {
-    return myPackageName.getString();
-  }
-
+  @NotNull
   @Override
   public IStubFileElementType getType() {
     return GoFileElementType.INSTANCE;
@@ -51,5 +48,16 @@ public class GoFileStub extends PsiFileStubImpl<GoFile> {
   @Nullable
   public String getBuildFlags() {
     return myBuildFlags.getString();
+  }
+
+  @Nullable
+  public StubElement<GoPackageClause> getPackageClauseStub() {
+    return findChildStubByType(GoPackageClauseStubElementType.INSTANCE);
+  }
+
+  @Nullable
+  public String getPackageName() {
+    StubElement<GoPackageClause> stub = getPackageClauseStub();
+    return stub instanceof GoPackageClauseStub ? ((GoPackageClauseStub)stub).getName() : null;  
   }
 }
